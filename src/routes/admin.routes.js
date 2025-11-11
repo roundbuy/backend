@@ -1,0 +1,89 @@
+const express = require('express');
+const router = express.Router();
+const { authenticate, authorize } = require('../middleware/auth.middleware');
+const adminController = require('../controllers/admin.controller');
+
+// All admin routes require admin or editor role
+router.use(authenticate);
+router.use(authorize('admin', 'editor'));
+
+// ==================== DASHBOARD ====================
+router.get('/dashboard', adminController.getDashboardStats);
+
+// ==================== USER MANAGEMENT ====================
+router.get('/users', adminController.getUsers);
+router.get('/users/:id', adminController.getUserDetail);
+router.put('/users/:id', adminController.updateUser);
+router.patch('/users/:id/status', adminController.toggleUserStatus);
+router.delete('/users/:id', authorize('admin'), adminController.deleteUser); // Only admin can delete
+
+// ==================== SUBSCRIPTION PLANS ====================
+router.get('/subscription-plans', adminController.getSubscriptionPlans);
+router.post('/subscription-plans', adminController.createSubscriptionPlan);
+router.put('/subscription-plans/:id', adminController.updateSubscriptionPlan);
+router.delete('/subscription-plans/:id', authorize('admin'), adminController.deleteSubscriptionPlan);
+
+// ==================== ADVERTISEMENT PLANS ====================
+router.get('/advertisement-plans', adminController.getAdvertisementPlans);
+router.post('/advertisement-plans', adminController.createAdvertisementPlan);
+router.put('/advertisement-plans/:id', adminController.updateAdvertisementPlan);
+router.delete('/advertisement-plans/:id', authorize('admin'), adminController.deleteAdvertisementPlan);
+
+// ==================== BANNER PLANS ====================
+router.get('/banner-plans', adminController.getBannerPlans);
+router.post('/banner-plans', adminController.createBannerPlan);
+router.put('/banner-plans/:id', adminController.updateBannerPlan);
+router.delete('/banner-plans/:id', authorize('admin'), adminController.deleteBannerPlan);
+
+// ==================== ADVERTISEMENTS (Content Management) ====================
+router.get('/advertisements', adminController.getAdvertisements);
+router.get('/advertisements/:id', adminController.getAdvertisementDetail);
+router.put('/advertisements/:id', adminController.updateAdvertisement);
+router.patch('/advertisements/:id/approve', adminController.approveAdvertisement);
+router.patch('/advertisements/:id/reject', adminController.rejectAdvertisement);
+router.delete('/advertisements/:id', adminController.deleteAdvertisement);
+
+// ==================== BANNERS (Content Management) ====================
+router.get('/banners', adminController.getBanners);
+router.patch('/banners/:id/approve', adminController.approveBanner);
+router.patch('/banners/:id/reject', adminController.rejectBanner);
+router.delete('/banners/:id', adminController.deleteBanner);
+
+// ==================== SUBSCRIPTIONS ====================
+router.get('/subscriptions', adminController.getSubscriptions);
+router.put('/subscriptions/:id', adminController.updateSubscription);
+
+// ==================== LANGUAGES ====================
+router.get('/languages', adminController.getLanguages);
+router.post('/languages', adminController.createLanguage);
+router.put('/languages/:id', adminController.updateLanguage);
+router.delete('/languages/:id', authorize('admin'), adminController.deleteLanguage);
+
+// ==================== TRANSLATIONS ====================
+router.get('/translation-keys', adminController.getTranslationKeys);
+router.post('/translation-keys', adminController.createTranslationKey);
+router.get('/translations', adminController.getTranslations);
+router.put('/translations/:id', adminController.updateTranslation);
+
+// ==================== SETTINGS ====================
+router.get('/settings', adminController.getSettings);
+router.put('/settings/:setting_key', adminController.updateSetting);
+router.post('/settings/bulk', adminController.bulkUpdateSettings);
+
+// ==================== MODERATION ====================
+router.get('/moderation/words', adminController.getModerationWords);
+router.post('/moderation/words', adminController.createModerationWord);
+router.put('/moderation/words/:id', adminController.updateModerationWord);
+router.delete('/moderation/words/:id', adminController.deleteModerationWord);
+
+router.get('/moderation/queue', adminController.getModerationQueue);
+router.patch('/moderation/queue/:id/review', adminController.reviewModerationItem);
+
+// ==================== API LOGS ====================
+router.get('/api-logs', adminController.getAPILogs);
+router.get('/api-logs/:id', adminController.getAPILogDetail);
+
+// ==================== CATEGORIES ====================
+router.get('/categories', adminController.getCategories);
+
+module.exports = router;
