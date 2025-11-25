@@ -24,7 +24,172 @@ DROP TABLE IF EXISTS orders;
 DROP TABLE IF EXISTS favorites;
 DROP TABLE IF EXISTS products;
 DROP TABLE IF EXISTS categories;
+DROP TABLE IF EXISTS currencies;
+DROP TABLE IF EXISTS saved_payment_methods;
+DROP TABLE IF EXISTS plan_prices;
+DROP TABLE IF EXISTS user_locations;
+DROP TABLE IF EXISTS ad_activities;
+DROP TABLE IF EXISTS ad_conditions;
+DROP TABLE IF EXISTS ad_ages;
+DROP TABLE IF EXISTS ad_genders;
+DROP TABLE IF EXISTS ad_sizes;
+DROP TABLE IF EXISTS ad_colors;
 DROP TABLE IF EXISTS users;
+
+-- Create currencies table
+CREATE TABLE currencies (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    code VARCHAR(3) UNIQUE NOT NULL COMMENT 'ISO currency code (USD, EUR, INR)',
+    name VARCHAR(50) NOT NULL,
+    symbol VARCHAR(10) NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    is_default BOOLEAN DEFAULT FALSE,
+    exchange_rate DECIMAL(10, 6) DEFAULT 1.000000 COMMENT 'Exchange rate to default currency',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_code (code),
+    INDEX idx_is_active (is_active),
+    INDEX idx_is_default (is_default)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create saved_payment_methods table
+CREATE TABLE saved_payment_methods (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    payment_method_type ENUM('card', 'bank_account', 'paypal', 'other') NOT NULL,
+    provider ENUM('stripe', 'razorpay', 'paypal') NOT NULL,
+    provider_payment_method_id VARCHAR(255) NOT NULL COMMENT 'Payment method ID from provider',
+    last_four VARCHAR(4) COMMENT 'Last 4 digits of card',
+    card_brand VARCHAR(50) COMMENT 'Visa, Mastercard, etc.',
+    expiry_month INT COMMENT 'Card expiry month',
+    expiry_year INT COMMENT 'Card expiry year',
+    is_default BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_provider (provider),
+    INDEX idx_is_default (is_default)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create user_locations table
+CREATE TABLE user_locations (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    name VARCHAR(100) NOT NULL COMMENT 'Location name (e.g., Home, Office, Warehouse)',
+    street VARCHAR(255),
+    street2 VARCHAR(255),
+    city VARCHAR(100) NOT NULL,
+    region VARCHAR(100) COMMENT 'State/Province',
+    country VARCHAR(100) NOT NULL,
+    zip_code VARCHAR(20),
+    latitude DECIMAL(10, 8),
+    longitude DECIMAL(11, 8),
+    is_default BOOLEAN DEFAULT FALSE,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_is_default (is_default),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create ad_activities table
+CREATE TABLE ad_activities (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create ad_conditions table
+CREATE TABLE ad_conditions (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create ad_ages table
+CREATE TABLE ad_ages (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create ad_genders table
+CREATE TABLE ad_genders (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create ad_sizes table
+CREATE TABLE ad_sizes (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    is_active BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create ad_colors table
+CREATE TABLE ad_colors (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(50) NOT NULL,
+    slug VARCHAR(50) UNIQUE NOT NULL,
+    hex_code VARCHAR(7) COMMENT 'Hex color code (e.g., #FF0000)',
+    is_active BOOLEAN DEFAULT TRUE,
+    sort_order INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_slug (slug),
+    INDEX idx_is_active (is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create plan_prices table for multi-currency support
+CREATE TABLE plan_prices (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    subscription_plan_id INT NOT NULL,
+    currency_id INT NOT NULL,
+    price DECIMAL(10, 2) NOT NULL,
+    tax_rate DECIMAL(5, 2) DEFAULT 0.00 COMMENT 'Tax rate as percentage',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (subscription_plan_id) REFERENCES subscription_plans(id) ON DELETE CASCADE,
+    FOREIGN KEY (currency_id) REFERENCES currencies(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_plan_currency (subscription_plan_id, currency_id),
+    INDEX idx_subscription_plan_id (subscription_plan_id),
+    INDEX idx_currency_id (currency_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create users table
 CREATE TABLE users (
@@ -39,6 +204,8 @@ CREATE TABLE users (
     subscription_start_date DATETIME DEFAULT NULL,
     subscription_end_date DATETIME DEFAULT NULL,
     is_verified BOOLEAN DEFAULT FALSE,
+    verification_token VARCHAR(64) DEFAULT NULL,
+    verification_expires DATETIME DEFAULT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     language_preference VARCHAR(5) DEFAULT 'en',
     last_login DATETIME,
@@ -47,7 +214,8 @@ CREATE TABLE users (
     INDEX idx_email (email),
     INDEX idx_role (role),
     INDEX idx_subscription_plan (subscription_plan_id),
-    INDEX idx_subscription_end_date (subscription_end_date)
+    INDEX idx_subscription_end_date (subscription_end_date),
+    INDEX idx_verification_token (verification_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create subscription_plans table
@@ -131,9 +299,16 @@ CREATE TABLE advertisements (
     description TEXT NOT NULL,
     images JSON COMMENT 'Array of image URLs',
     category_id INT NOT NULL,
-    location VARCHAR(255),
+    subcategory_id INT DEFAULT NULL,
+    location_id INT DEFAULT NULL COMMENT 'Reference to user_locations table',
     price DECIMAL(10, 2) NOT NULL,
-    condition_type ENUM('new', 'like_new', 'good', 'fair', 'poor') DEFAULT 'good',
+    display_duration_days INT DEFAULT 60 COMMENT '60 days or continue (NULL for continue)',
+    activity_id INT DEFAULT NULL,
+    condition_id INT DEFAULT NULL,
+    age_id INT DEFAULT NULL,
+    gender_id INT DEFAULT NULL,
+    size_id INT DEFAULT NULL,
+    color_id INT DEFAULT NULL,
     status ENUM('draft', 'pending', 'approved', 'published', 'expired', 'rejected', 'sold') DEFAULT 'draft',
     views_count INT DEFAULT 0,
     featured BOOLEAN DEFAULT FALSE,
@@ -145,9 +320,25 @@ CREATE TABLE advertisements (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (category_id) REFERENCES categories(id),
+    FOREIGN KEY (subcategory_id) REFERENCES categories(id) ON DELETE SET NULL,
+    FOREIGN KEY (location_id) REFERENCES user_locations(id) ON DELETE SET NULL,
     FOREIGN KEY (advertisement_plan_id) REFERENCES advertisement_plans(id) ON DELETE SET NULL,
+    FOREIGN KEY (activity_id) REFERENCES ad_activities(id) ON DELETE SET NULL,
+    FOREIGN KEY (condition_id) REFERENCES ad_conditions(id) ON DELETE SET NULL,
+    FOREIGN KEY (age_id) REFERENCES ad_ages(id) ON DELETE SET NULL,
+    FOREIGN KEY (gender_id) REFERENCES ad_genders(id) ON DELETE SET NULL,
+    FOREIGN KEY (size_id) REFERENCES ad_sizes(id) ON DELETE SET NULL,
+    FOREIGN KEY (color_id) REFERENCES ad_colors(id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
     INDEX idx_category_id (category_id),
+    INDEX idx_subcategory_id (subcategory_id),
+    INDEX idx_location_id (location_id),
+    INDEX idx_activity_id (activity_id),
+    INDEX idx_condition_id (condition_id),
+    INDEX idx_age_id (age_id),
+    INDEX idx_gender_id (gender_id),
+    INDEX idx_size_id (size_id),
+    INDEX idx_color_id (color_id),
     INDEX idx_status (status),
     INDEX idx_featured (featured),
     INDEX idx_end_date (end_date),
@@ -461,11 +652,22 @@ CREATE TABLE admin_activity_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Insert default subscription plans
-INSERT INTO subscription_plans (name, slug, description, price, duration_days, features, sort_order) VALUES
-('Free', 'free', 'Basic plan for new users', 0.00, 365, '{"max_ads": 3, "max_banners": 0, "featured_ads": 0, "support_priority": "low", "chat_enabled": true}', 1),
-('Basic', 'basic', 'For casual sellers', 9.99, 30, '{"max_ads": 10, "max_banners": 1, "featured_ads": 1, "support_priority": "standard", "chat_enabled": true, "analytics": true}', 2),
-('Premium', 'premium', 'For regular sellers', 29.99, 30, '{"max_ads": 50, "max_banners": 5, "featured_ads": 5, "support_priority": "high", "chat_enabled": true, "analytics": true, "verification_badge": true}', 3),
-('Enterprise', 'enterprise', 'For business sellers', 99.99, 30, '{"max_ads": -1, "max_banners": 20, "featured_ads": 20, "support_priority": "highest", "chat_enabled": true, "analytics": true, "verification_badge": true, "api_access": true, "bulk_upload": true}', 4);
+INSERT INTO subscription_plans (name, slug, description, duration_days, features, sort_order) VALUES
+('Free', 'free', 'Basic plan for new users', 365, '{"max_ads": 3, "max_banners": 0, "featured_ads": 0, "support_priority": "low", "chat_enabled": true}', 1),
+('Basic', 'basic', 'For casual sellers', 30, '{"max_ads": 10, "max_banners": 1, "featured_ads": 1, "support_priority": "standard", "chat_enabled": true, "analytics": true}', 2),
+('Premium', 'premium', 'For regular sellers', 30, '{"max_ads": 50, "max_banners": 5, "featured_ads": 5, "support_priority": "high", "chat_enabled": true, "analytics": true, "verification_badge": true}', 3),
+('Enterprise', 'enterprise', 'For business sellers', 30, '{"max_ads": -1, "max_banners": 20, "featured_ads": 20, "support_priority": "highest", "chat_enabled": true, "analytics": true, "verification_badge": true, "api_access": true, "bulk_upload": true}', 4);
+
+-- Insert default plan prices (assuming plan IDs 1-4 from above)
+INSERT INTO plan_prices (subscription_plan_id, currency_id, price, tax_rate) VALUES
+-- Free plan (ID 1) - always 0
+(1, 1, 0.00, 0.00), (1, 2, 0.00, 0.00), (1, 3, 0.00, 0.00), (1, 4, 0.00, 0.00),
+-- Basic plan (ID 2)
+(2, 1, 9.99, 0.00), (2, 2, 8.49, 0.00), (2, 3, 829.17, 18.00), (2, 4, 7.29, 0.00),
+-- Premium plan (ID 3)
+(3, 1, 29.99, 0.00), (3, 2, 25.49, 0.00), (3, 3, 2487.17, 18.00), (3, 4, 21.89, 0.00),
+-- Enterprise plan (ID 4)
+(4, 1, 99.99, 0.00), (4, 2, 84.99, 0.00), (4, 3, 8291.17, 18.00), (4, 4, 72.99, 0.00);
 
 -- Insert default categories
 INSERT INTO categories (name, slug, description, sort_order) VALUES
@@ -478,12 +680,70 @@ INSERT INTO categories (name, slug, description, sort_order) VALUES
 ('Jobs', 'jobs', 'Job listings and career opportunities', 7),
 ('Sports & Hobbies', 'sports-hobbies', 'Sports equipment and hobby items', 8);
 
+-- Insert default currencies
+INSERT INTO currencies (code, name, symbol, is_active, is_default, exchange_rate) VALUES
+('USD', 'US Dollar', '$', TRUE, FALSE, 1.000000),
+('EUR', 'Euro', '€', TRUE, FALSE, 0.850000),
+('INR', 'Indian Rupee', '₹', TRUE, TRUE, 83.000000),
+('GBP', 'British Pound', '£', TRUE, FALSE, 0.730000);
+
 -- Insert default languages
 INSERT INTO languages (name, code, is_default, is_active) VALUES
 ('English', 'en', TRUE, TRUE),
 ('Hindi', 'hi', FALSE, TRUE),
 ('Spanish', 'es', FALSE, TRUE),
 ('French', 'fr', FALSE, TRUE);
+
+-- Insert default ad activities
+INSERT INTO ad_activities (name, slug, sort_order) VALUES
+('Buy', 'buy', 1),
+('Sell', 'sell', 2),
+('Rent', 'rent', 3),
+('Services', 'services', 4),
+('Give', 'give', 5),
+('Form a Group', 'form-a-group', 6);
+
+-- Insert default ad conditions
+INSERT INTO ad_conditions (name, slug, sort_order) VALUES
+('All', 'all', 1),
+('New', 'new', 2),
+('Excellent', 'excellent', 3),
+('Good', 'good', 4),
+('Satisfactory', 'satisfactory', 5);
+
+-- Insert default ad ages
+INSERT INTO ad_ages (name, slug, sort_order) VALUES
+('Child', 'child', 1),
+('Young', 'young', 2),
+('Old', 'old', 3);
+
+-- Insert default ad genders
+INSERT INTO ad_genders (name, slug, sort_order) VALUES
+('Male', 'male', 1),
+('Female', 'female', 2),
+('Other', 'other', 3);
+
+-- Insert default ad sizes
+INSERT INTO ad_sizes (name, slug, sort_order) VALUES
+('XS', 'xs', 1),
+('S', 's', 2),
+('M', 'm', 3),
+('L', 'l', 4),
+('XL', 'xl', 5),
+('XXL', 'xxl', 6);
+
+-- Insert default ad colors
+INSERT INTO ad_colors (name, slug, hex_code, sort_order) VALUES
+('Red', 'red', '#FF0000', 1),
+('Blue', 'blue', '#0000FF', 2),
+('Green', 'green', '#00FF00', 3),
+('Yellow', 'yellow', '#FFFF00', 4),
+('Black', 'black', '#000000', 5),
+('White', 'white', '#FFFFFF', 6),
+('Gray', 'gray', '#808080', 7),
+('Purple', 'purple', '#800080', 8),
+('Orange', 'orange', '#FFA500', 9),
+('Pink', 'pink', '#FFC0CB', 10);
 
 -- Insert default settings
 INSERT INTO settings (category, setting_key, setting_value, description) VALUES
@@ -492,7 +752,9 @@ INSERT INTO settings (category, setting_key, setting_value, description) VALUES
 ('general', 'currency', '"INR"', 'Default currency'),
 ('general', 'items_per_page', '20', 'Default pagination limit'),
 ('email', 'smtp_enabled', 'false', 'Enable SMTP email sending'),
-('payment', 'stripe_enabled', 'false', 'Enable Stripe payment'),
+('payment', 'stripe_enabled', 'true', 'Enable Stripe payment'),
+('payment', 'stripe_secret_key', '""', 'Stripe secret key for payments'),
+('payment', 'stripe_publishable_key', '""', 'Stripe publishable key for frontend'),
 ('payment', 'razorpay_enabled', 'false', 'Enable Razorpay payment'),
 ('notification', 'push_enabled', 'true', 'Enable push notifications'),
 ('notification', 'email_enabled', 'true', 'Enable email notifications'),
