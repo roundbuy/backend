@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const mobileAuthController = require('../../controllers/mobile-app/auth.controller');
+const { authenticate } = require('../../middleware/auth.middleware');
 
 // Mobile app authentication routes
 
@@ -31,5 +32,26 @@ router.post('/resend-verification', mobileAuthController.resendVerification);
  * @access Public
  */
 router.post('/login', mobileAuthController.login);
+
+/**
+ * @route POST /api/v1/mobile-app/auth/forgot-password
+ * @desc Request password reset
+ * @access Public
+ */
+router.post('/forgot-password', mobileAuthController.forgotPassword);
+
+/**
+ * @route POST /api/v1/mobile-app/auth/reset-password
+ * @desc Reset password with token
+ * @access Public
+ */
+router.post('/reset-password', mobileAuthController.resetPassword);
+
+/**
+ * @route POST /api/v1/mobile-app/auth/change-password
+ * @desc Change password (requires authentication)
+ * @access Private
+ */
+router.post('/change-password', authenticate, mobileAuthController.changePassword);
 
 module.exports = router;

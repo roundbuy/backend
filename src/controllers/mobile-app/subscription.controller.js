@@ -1,4 +1,5 @@
 const { promisePool } = require('../../config/database');
+const { sendWelcomeEmail } = require('../../services/email.service');
 
 // Function to get Stripe instance with configured key
 const getStripeInstance = async () => {
@@ -37,7 +38,11 @@ const getPlans = async (req, res) => {
 
     // Get all active subscription plans
     const [plans] = await promisePool.query(
-      'SELECT id, name, slug, description, duration_days, features, sort_order FROM subscription_plans WHERE is_active = TRUE ORDER BY sort_order ASC'
+      `SELECT id, name, slug, subheading, description, description_bullets,
+              duration_days, features, color_hex, tag, renewal_price, sort_order
+       FROM subscription_plans
+       WHERE is_active = TRUE
+       ORDER BY sort_order ASC`
     );
 
     // Get all currencies
@@ -87,14 +92,23 @@ const getPlans = async (req, res) => {
         totalPrice = price + taxAmount;
       }
 
+      // Calculate renewal price
+      const renewalPrice = plan.renewal_price || (targetPrice ? targetPrice.price : 0);
+      const renewalTaxAmount = targetPrice ? (renewalPrice * targetPrice.tax_rate) / 100 : 0;
+      const renewalTotalPrice = renewalPrice + renewalTaxAmount;
+
       return {
         id: plan.id,
         name: plan.name,
         slug: plan.slug,
-        subtitle: plan.description, // Could be enhanced with translations
+        subheading: plan.subheading,
+        subtitle: plan.subheading || plan.description,
         description: plan.description,
+        description_bullets: plan.description_bullets ? JSON.parse(plan.description_bullets) : [],
         duration_days: plan.duration_days,
         features: JSON.parse(plan.features || '{}'),
+        color: plan.color_hex || '#4CAF50',
+        tag: plan.tag, // 'best', 'popular', 'recommended', or null
         prices: prices,
         target_currency: {
           code: targetCurrency,
@@ -104,16 +118,27 @@ const getPlans = async (req, res) => {
           total_price: totalPrice,
           symbol: targetPrice ? targetPrice.symbol : ''
         },
-        sort_order: plan.sort_order
+        renewal: {
+          price: renewalPrice,
+          tax_amount: renewalTaxAmount,
+          total_price: renewalTotalPrice,
+          is_different: plan.renewal_price != null && plan.renewal_price !== (targetPrice ? targetPrice.price : 0)
+        },
+        sort_order: plan.sort_order,
+        is_best: false, // Will be set below
+        is_popular: false // Will be set below
       };
     });
 
-    // Get popular/best plans (for now, mark first non-free as popular)
-    const bestPlan = plansWithPrices.find(p => p.slug !== 'free');
-    const popularPlan = bestPlan;
-
-    if (bestPlan) bestPlan.is_best = true;
-    if (popularPlan) popularPlan.is_popular = true;
+    // Mark plans with tags
+    plansWithPrices.forEach(plan => {
+      if (plan.tag === 'best') {
+        plan.is_best = true;
+      }
+      if (plan.tag === 'popular') {
+        plan.is_popular = true;
+      }
+    });
 
     res.json({
       success: true,
@@ -244,7 +269,7 @@ const getPlanDetails = async (req, res) => {
  */
 const purchasePlan = async (req, res) => {
   try {
-    const { plan_id, currency_code, payment_method_id, save_payment_method = false, country, zip_code } = req.body;
+    const { plan_id, currency_code, payment_method_id, save_payment_method = false, country, zip_code, auto_renew = false } = req.body;
     const userId = req.user.id;
 
     // Validate required fields
@@ -291,11 +316,47 @@ const purchasePlan = async (req, res) => {
       });
     }
 
-    // Create payment intent with Stripe
+    // Get user details for Stripe customer
+    const [users] = await promisePool.query(
+      'SELECT email, full_name FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = users[0];
     const stripe = await getStripeInstance();
+
+    // Create or get Stripe customer
+    let stripeCustomerId = null;
+    const [existingCustomers] = await promisePool.query(
+      'SELECT stripe_customer_id FROM user_subscriptions WHERE user_id = ? AND stripe_customer_id IS NOT NULL LIMIT 1',
+      [userId]
+    );
+
+    if (existingCustomers.length > 0) {
+      stripeCustomerId = existingCustomers[0].stripe_customer_id;
+    } else {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.full_name,
+        metadata: {
+          user_id: userId
+        }
+      });
+      stripeCustomerId = customer.id;
+    }
+
+    // Create payment intent with Stripe
     const paymentIntent = await stripe.paymentIntents.create({
       amount: Math.round(totalAmount * 100), // Convert to cents
       currency: currency_code.toLowerCase(),
+      customer: stripeCustomerId,
       payment_method: payment_method_id,
       confirm: true,
       automatic_payment_methods: {
@@ -304,6 +365,7 @@ const purchasePlan = async (req, res) => {
       metadata: {
         user_id: userId,
         plan_id: plan_id,
+        plan_name: plan.name,
         currency: currency_code
       }
     });
@@ -321,12 +383,22 @@ const purchasePlan = async (req, res) => {
     const endDate = new Date();
     endDate.setDate(endDate.getDate() + plan.duration_days);
 
+    // Calculate renewal price
+    const [planDetails] = await promisePool.query(
+      'SELECT renewal_price FROM subscription_plans WHERE id = ?',
+      [plan_id]
+    );
+    const renewalPrice = planDetails[0].renewal_price;
+
     // Create user subscription
     const [subResult] = await promisePool.query(
       `INSERT INTO user_subscriptions
-       (user_id, subscription_plan_id, start_date, end_date, status, payment_id, payment_method, amount_paid)
-       VALUES (?, ?, ?, ?, 'active', ?, 'stripe', ?)`,
-      [userId, plan_id, startDate, endDate, paymentIntent.id, totalAmount]
+       (user_id, subscription_plan_id, start_date, end_date, status,
+        stripe_customer_id, payment_id, payment_method, amount_paid, currency_code,
+        auto_renew, renewal_price)
+       VALUES (?, ?, ?, ?, 'active', ?, ?, 'stripe', ?, ?, ?, ?)`,
+      [userId, plan_id, startDate, endDate, stripeCustomerId, paymentIntent.id,
+       totalAmount, currency_code, auto_renew, renewalPrice]
     );
 
     // Update user's subscription
@@ -334,6 +406,23 @@ const purchasePlan = async (req, res) => {
       'UPDATE users SET subscription_plan_id = ?, subscription_start_date = ?, subscription_end_date = ? WHERE id = ?',
       [plan_id, startDate, endDate, userId]
     );
+
+    // Send welcome email
+    if (user) {
+      try {
+        await sendWelcomeEmail(user.email, user.full_name, {
+          planName: plan.name,
+          startDate,
+          endDate,
+          amountPaid: totalAmount,
+          currency: currency_code
+        });
+        console.log(`✅ Welcome email sent to ${user.email}`);
+      } catch (emailError) {
+        console.error('⚠️ Failed to send welcome email:', emailError.message);
+        // Continue even if email fails
+      }
+    }
 
     // Save payment method if requested
     if (save_payment_method) {

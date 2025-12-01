@@ -223,16 +223,24 @@ CREATE TABLE subscription_plans (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(100) NOT NULL,
     slug VARCHAR(100) UNIQUE NOT NULL,
+    subheading VARCHAR(255) COMMENT 'Short plan subtitle',
     description TEXT,
+    description_bullets JSON COMMENT 'Array of feature descriptions for UI',
     price DECIMAL(10, 2) NOT NULL DEFAULT 0.00,
+    renewal_price DECIMAL(10, 2) DEFAULT NULL COMMENT 'Price after first period, NULL if same as initial price',
     duration_days INT NOT NULL DEFAULT 30,
     features JSON COMMENT '{"max_ads": 10, "max_banners": 2, "featured_ads": 1, "support_priority": "standard"}',
+    color_hex VARCHAR(7) DEFAULT '#4CAF50' COMMENT 'Plan color for UI (e.g., #4CAF50)',
+    tag VARCHAR(20) DEFAULT NULL COMMENT 'best, popular, recommended, or NULL',
+    stripe_product_id VARCHAR(255) DEFAULT NULL COMMENT 'Stripe Product ID',
+    stripe_price_id VARCHAR(255) DEFAULT NULL COMMENT 'Stripe Price ID for default currency',
     is_active BOOLEAN DEFAULT TRUE,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_slug (slug),
-    INDEX idx_is_active (is_active)
+    INDEX idx_is_active (is_active),
+    INDEX idx_stripe_product_id (stripe_product_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create user_subscriptions table
@@ -243,16 +251,22 @@ CREATE TABLE user_subscriptions (
     start_date DATETIME NOT NULL,
     end_date DATETIME NOT NULL,
     status ENUM('active', 'expired', 'cancelled', 'pending') DEFAULT 'pending',
-    payment_id VARCHAR(255),
+    stripe_subscription_id VARCHAR(255) COMMENT 'Stripe Subscription ID for recurring',
+    stripe_customer_id VARCHAR(255) COMMENT 'Stripe Customer ID',
+    payment_id VARCHAR(255) COMMENT 'Stripe Payment Intent ID',
     payment_method VARCHAR(50),
     amount_paid DECIMAL(10, 2) NOT NULL,
+    currency_code VARCHAR(3) DEFAULT 'INR',
     auto_renew BOOLEAN DEFAULT FALSE,
+    renewal_price DECIMAL(10, 2) DEFAULT NULL COMMENT 'Price for renewal if different',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     FOREIGN KEY (subscription_plan_id) REFERENCES subscription_plans(id),
     INDEX idx_user_id (user_id),
     INDEX idx_status (status),
-    INDEX idx_end_date (end_date)
+    INDEX idx_end_date (end_date),
+    INDEX idx_stripe_subscription_id (stripe_subscription_id),
+    INDEX idx_stripe_customer_id (stripe_customer_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create categories table
@@ -652,22 +666,37 @@ CREATE TABLE admin_activity_logs (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Insert default subscription plans
-INSERT INTO subscription_plans (name, slug, description, duration_days, features, sort_order) VALUES
-('Free', 'free', 'Basic plan for new users', 365, '{"max_ads": 3, "max_banners": 0, "featured_ads": 0, "support_priority": "low", "chat_enabled": true}', 1),
-('Basic', 'basic', 'For casual sellers', 30, '{"max_ads": 10, "max_banners": 1, "featured_ads": 1, "support_priority": "standard", "chat_enabled": true, "analytics": true}', 2),
-('Premium', 'premium', 'For regular sellers', 30, '{"max_ads": 50, "max_banners": 5, "featured_ads": 5, "support_priority": "high", "chat_enabled": true, "analytics": true, "verification_badge": true}', 3),
-('Enterprise', 'enterprise', 'For business sellers', 30, '{"max_ads": -1, "max_banners": 20, "featured_ads": 20, "support_priority": "highest", "chat_enabled": true, "analytics": true, "verification_badge": true, "api_access": true, "bulk_upload": true}', 4);
+INSERT INTO subscription_plans (name, slug, subheading, description, description_bullets, duration_days, features, color_hex, tag, sort_order) VALUES
+('Green', 'green', 'Perfect for getting started', 'Basic plan for new users with essential features',
+ '["3 active advertisements", "Basic support", "Standard listing visibility", "Mobile app access"]',
+ 365, '{"max_ads": 3, "max_banners": 0, "featured_ads": 0, "support_priority": "low", "chat_enabled": true}',
+ '#4CAF50', NULL, 1),
+
+('Gold', 'gold', 'Most popular choice', 'For regular sellers who want more visibility',
+ '["10 active advertisements", "Priority support", "Featured listings", "Analytics dashboard", "3 product locations"]',
+ 30, '{"max_ads": 10, "max_banners": 1, "featured_ads": 1, "support_priority": "standard", "chat_enabled": true, "analytics": true}',
+ '#FFD700', 'best', 2),
+
+('Violet', 'violet', 'Maximum features & support', 'For power sellers and business accounts',
+ '["50 active advertisements", "Premium support", "Homepage featured", "Advanced analytics", "Verification badge", "Instant ad renewal"]',
+ 30, '{"max_ads": 50, "max_banners": 5, "featured_ads": 5, "support_priority": "high", "chat_enabled": true, "analytics": true, "verification_badge": true}',
+ '#9C27B0', 'popular', 3),
+
+('Enterprise', 'enterprise', 'For large businesses', 'Unlimited features for enterprise sellers',
+ '["Unlimited advertisements", "Dedicated support", "API access", "Bulk upload", "Custom branding", "Priority placement"]',
+ 30, '{"max_ads": -1, "max_banners": 20, "featured_ads": 20, "support_priority": "highest", "chat_enabled": true, "analytics": true, "verification_badge": true, "api_access": true, "bulk_upload": true}',
+ '#2196F3', NULL, 4);
 
 -- Insert default plan prices (assuming plan IDs 1-4 from above)
 INSERT INTO plan_prices (subscription_plan_id, currency_id, price, tax_rate) VALUES
--- Free plan (ID 1) - always 0
+-- Green plan (ID 1) - Free
 (1, 1, 0.00, 0.00), (1, 2, 0.00, 0.00), (1, 3, 0.00, 0.00), (1, 4, 0.00, 0.00),
--- Basic plan (ID 2)
-(2, 1, 9.99, 0.00), (2, 2, 8.49, 0.00), (2, 3, 829.17, 18.00), (2, 4, 7.29, 0.00),
--- Premium plan (ID 3)
-(3, 1, 29.99, 0.00), (3, 2, 25.49, 0.00), (3, 3, 2487.17, 18.00), (3, 4, 21.89, 0.00),
+-- Gold plan (ID 2)
+(2, 1, 9.99, 0.00), (2, 2, 8.49, 0.00), (2, 3, 829.00, 18.00), (2, 4, 7.29, 0.00),
+-- Violet plan (ID 3)
+(3, 1, 29.99, 0.00), (3, 2, 25.49, 0.00), (3, 3, 2487.00, 18.00), (3, 4, 21.89, 0.00),
 -- Enterprise plan (ID 4)
-(4, 1, 99.99, 0.00), (4, 2, 84.99, 0.00), (4, 3, 8291.17, 18.00), (4, 4, 72.99, 0.00);
+(4, 1, 99.99, 0.00), (4, 2, 84.99, 0.00), (4, 3, 8291.00, 18.00), (4, 4, 72.99, 0.00);
 
 -- Insert default categories
 INSERT INTO categories (name, slug, description, sort_order) VALUES

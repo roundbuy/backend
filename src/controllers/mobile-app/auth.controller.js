@@ -2,6 +2,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const { promisePool } = require('../../config/database');
 const { generateTokens } = require('../../utils/jwt');
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../../services/email.service');
 
 /**
  * Register a new user for mobile app
@@ -53,7 +54,10 @@ const register = async (req, res) => {
     const password_hash = await bcrypt.hash(password, 10);
 
     // Generate email verification token
-    const verification_token = crypto.randomBytes(32).toString('hex');
+    // Use "1234" in development mode for easy testing
+    const verification_token = process.env.NODE_ENV === 'development'
+      ? '1234'
+      : crypto.randomBytes(32).toString('hex');
     const verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
 
     // Create user (not verified yet, no subscription)
@@ -65,9 +69,18 @@ const register = async (req, res) => {
 
     const userId = result.insertId;
 
-    // TODO: Send verification email
-    // For now, just return success with token for testing
-    console.log(`Verification token for ${email}: ${verification_token}`);
+    // Send verification email (only if SMTP is configured)
+    if (process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+      try {
+        await sendVerificationEmail(email, full_name, verification_token);
+        console.log(`✅ Verification email sent to ${email}`);
+      } catch (emailError) {
+        console.error('⚠️ Failed to send verification email:', emailError.message);
+        // Continue with registration even if email fails
+      }
+    } else {
+      console.log(`📧 Development Mode - Verification code for ${email}: ${verification_token}`);
+    }
 
     res.status(201).json({
       success: true,
@@ -196,7 +209,10 @@ const resendVerification = async (req, res) => {
     }
 
     // Generate new verification token
-    const verification_token = crypto.randomBytes(32).toString('hex');
+    // Use "1234" in development mode for easy testing
+    const verification_token = process.env.NODE_ENV === 'development'
+      ? '1234'
+      : crypto.randomBytes(32).toString('hex');
     const verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
     // Update user
@@ -205,8 +221,22 @@ const resendVerification = async (req, res) => {
       [verification_token, verification_expires, user.id]
     );
 
-    // TODO: Send verification email
-    console.log(`New verification token for ${email}: ${verification_token}`);
+    // Send verification email (only if SMTP is configured)
+    if (process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
+      try {
+        await sendVerificationEmail(email, user.full_name || 'User', verification_token);
+        console.log(`✅ Verification email resent to ${email}`);
+      } catch (emailError) {
+        console.error('⚠️ Failed to resend verification email:', emailError.message);
+        // Return error if email fails on resend
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to send verification email. Please try again later.'
+        });
+      }
+    } else {
+      console.log(`📧 Development Mode - New verification code for ${email}: ${verification_token}`);
+    }
 
     res.json({
       success: true,
@@ -266,8 +296,29 @@ const login = async (req, res) => {
     if (!user.is_verified) {
       return res.status(403).json({
         success: false,
-        message: 'Please verify your email before logging in'
+        message: 'Please verify your email before logging in',
+        error_code: 'EMAIL_NOT_VERIFIED',
+        data: {
+          email: user.email,
+          requires_verification: true
+        }
       });
+    }
+
+    // Check if user has subscription
+    const [subscriptions] = await promisePool.query(
+      `SELECT id FROM user_subscriptions
+       WHERE user_id = ? AND status = 'active' AND end_date > NOW()
+       LIMIT 1`,
+      [user.id]
+    );
+
+    const hasSubscription = subscriptions.length > 0;
+
+    // If no active subscription, indicate in response
+    if (!hasSubscription) {
+      // Allow login but flag that subscription is needed
+      console.log(`⚠️ User ${user.email} logged in without active subscription`);
     }
 
     // Verify password
@@ -299,9 +350,12 @@ const login = async (req, res) => {
           full_name: user.full_name,
           role: user.role,
           language_preference: user.language_preference,
-          is_verified: user.is_verified
+          is_verified: user.is_verified,
+          has_active_subscription: hasSubscription,
+          requires_subscription: !hasSubscription
         },
-        ...tokens
+        ...tokens,
+        requires_subscription: !hasSubscription
       }
     });
   } catch (error) {
@@ -314,9 +368,250 @@ const login = async (req, res) => {
   }
 };
 
+/**
+ * Request password reset
+ * POST /api/v1/mobile-app/auth/forgot-password
+ */
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required'
+      });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid email format'
+      });
+    }
+
+    // Find user
+    const [users] = await promisePool.query(
+      'SELECT id, email, full_name, is_active FROM users WHERE email = ?',
+      [email]
+    );
+
+    // Don't reveal if user exists or not (security best practice)
+    if (users.length === 0) {
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, you will receive a password reset link'
+      });
+    }
+
+    const user = users[0];
+
+    // Check if user is active
+    if (!user.is_active) {
+      return res.json({
+        success: true,
+        message: 'If an account exists with this email, you will receive a password reset link'
+      });
+    }
+
+    // Generate password reset token
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const resetExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    // Store reset token in database (add columns if needed)
+    // For now, we'll use verification_token and verification_expires
+    await promisePool.query(
+      `UPDATE users SET verification_token = ?, verification_expires = ? WHERE id = ?`,
+      [resetToken, resetExpires, user.id]
+    );
+
+    // Send password reset email
+    try {
+      await sendPasswordResetEmail(email, user.full_name, resetToken);
+      console.log(`✅ Password reset email sent to ${email}`);
+    } catch (emailError) {
+      console.error('⚠️ Failed to send password reset email:', emailError.message);
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to send password reset email. Please try again later.'
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'If an account exists with this email, you will receive a password reset link'
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing password reset request',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Reset password with token
+ * POST /api/v1/mobile-app/auth/reset-password
+ */
+const resetPassword = async (req, res) => {
+  try {
+    const { email, token, new_password } = req.body;
+
+    // Validate input
+    if (!email || !token || !new_password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, token, and new password are required'
+      });
+    }
+
+    // Validate password strength
+    if (new_password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'Password must be at least 8 characters long'
+      });
+    }
+
+    // Find user with matching email and reset token
+    const [users] = await promisePool.query(
+      `SELECT id, email, verification_expires FROM users
+       WHERE email = ? AND verification_token = ? AND is_active = TRUE`,
+      [email, token]
+    );
+
+    if (users.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid or expired reset token'
+      });
+    }
+
+    const user = users[0];
+
+    // Check if token is expired
+    if (new Date() > new Date(user.verification_expires)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reset token has expired'
+      });
+    }
+
+    // Hash new password
+    const password_hash = await bcrypt.hash(new_password, 10);
+
+    // Update password and clear reset token
+    await promisePool.query(
+      `UPDATE users SET password_hash = ?, verification_token = NULL, verification_expires = NULL WHERE id = ?`,
+      [password_hash, user.id]
+    );
+
+    res.json({
+      success: true,
+      message: 'Password reset successfully. You can now login with your new password.'
+    });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error resetting password',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Change password (for authenticated users)
+ * POST /api/v1/mobile-app/auth/change-password
+ */
+const changePassword = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { current_password, new_password } = req.body;
+
+    // Validate input
+    if (!current_password || !new_password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Current password and new password are required'
+      });
+    }
+
+    // Validate new password strength
+    if (new_password.length < 8) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be at least 8 characters long'
+      });
+    }
+
+    // Get user's current password hash
+    const [users] = await promisePool.query(
+      'SELECT id, password_hash FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = users[0];
+
+    // Verify current password
+    const isValidPassword = await bcrypt.compare(current_password, user.password_hash);
+
+    if (!isValidPassword) {
+      return res.status(401).json({
+        success: false,
+        message: 'Current password is incorrect'
+      });
+    }
+
+    // Check if new password is same as current
+    const isSamePassword = await bcrypt.compare(new_password, user.password_hash);
+    if (isSamePassword) {
+      return res.status(400).json({
+        success: false,
+        message: 'New password must be different from current password'
+      });
+    }
+
+    // Hash new password
+    const password_hash = await bcrypt.hash(new_password, 10);
+
+    // Update password
+    await promisePool.query(
+      'UPDATE users SET password_hash = ? WHERE id = ?',
+      [password_hash, userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Password changed successfully'
+    });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error changing password',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   register,
   verifyEmail,
   resendVerification,
-  login
+  login,
+  forgotPassword,
+  resetPassword,
+  changePassword
 };

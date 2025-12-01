@@ -592,6 +592,309 @@ const deleteAdvertisement = async (req, res) => {
   }
 };
 
+/**
+ * Browse/search advertisements (authenticated, requires subscription)
+ * GET /api/v1/mobile-app/advertisements/browse
+ */
+const browseAdvertisements = async (req, res) => {
+  try {
+    const {
+      search,
+      category_id,
+      subcategory_id,
+      activity_id,
+      condition_id,
+      min_price,
+      max_price,
+      latitude,
+      longitude,
+      radius = 50, // km
+      sort = 'created_at',
+      order = 'DESC',
+      page = 1,
+      limit = 20
+    } = req.query;
+
+    let whereClause = 'WHERE a.status = "published"';
+    let params = [];
+
+    // Search query
+    if (search) {
+      whereClause += ' AND (a.title LIKE ? OR a.description LIKE ?)';
+      const searchTerm = `%${search}%`;
+      params.push(searchTerm, searchTerm);
+    }
+
+    // Category filter
+    if (category_id) {
+      whereClause += ' AND a.category_id = ?';
+      params.push(category_id);
+    }
+
+    // Subcategory filter
+    if (subcategory_id) {
+      whereClause += ' AND a.subcategory_id = ?';
+      params.push(subcategory_id);
+    }
+
+    // Activity filter
+    if (activity_id) {
+      whereClause += ' AND a.activity_id = ?';
+      params.push(activity_id);
+    }
+
+    // Condition filter
+    if (condition_id) {
+      whereClause += ' AND a.condition_id = ?';
+      params.push(condition_id);
+    }
+
+    // Price range filter
+    if (min_price) {
+      whereClause += ' AND a.price >= ?';
+      params.push(parseFloat(min_price));
+    }
+    if (max_price) {
+      whereClause += ' AND a.price <= ?';
+      params.push(parseFloat(max_price));
+    }
+
+    // Location-based search (if coordinates provided)
+    let distanceSelect = '';
+    if (latitude && longitude) {
+      distanceSelect = `, (6371 * acos(cos(radians(?)) * cos(radians(ul.latitude)) *
+        cos(radians(ul.longitude) - radians(?)) + sin(radians(?)) *
+        sin(radians(ul.latitude)))) AS distance`;
+      
+      // Add distance to params (will be used later in HAVING clause)
+      params.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude));
+    }
+
+    // Valid sort fields
+    const validSorts = ['created_at', 'price', 'views_count', 'distance'];
+    const sortField = validSorts.includes(sort) ? sort : 'created_at';
+    const sortOrder = order.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
+
+    const offset = (page - 1) * limit;
+
+    // Build query
+    let query = `
+      SELECT a.*, c.name as category_name, sc.name as subcategory_name,
+             ul.name as location_name, ul.city, ul.country, ul.latitude, ul.longitude,
+             act.name as activity_name, cond.name as condition_name,
+             ag.name as age_name, gend.name as gender_name,
+             sz.name as size_name, col.name as color_name, col.hex_code,
+             u.full_name as seller_name, u.id as seller_id
+             ${distanceSelect}
+      FROM advertisements a
+      LEFT JOIN categories c ON a.category_id = c.id
+      LEFT JOIN categories sc ON a.subcategory_id = sc.id
+      LEFT JOIN user_locations ul ON a.location_id = ul.id
+      LEFT JOIN ad_activities act ON a.activity_id = act.id
+      LEFT JOIN ad_conditions cond ON a.condition_id = cond.id
+      LEFT JOIN ad_ages ag ON a.age_id = ag.id
+      LEFT JOIN ad_genders gend ON a.gender_id = gend.id
+      LEFT JOIN ad_sizes sz ON a.size_id = sz.id
+      LEFT JOIN ad_colors col ON a.color_id = col.id
+      LEFT JOIN users u ON a.user_id = u.id
+      ${whereClause}
+    `;
+
+    // Add HAVING clause for distance filter
+    if (latitude && longitude && radius) {
+      query += ` HAVING distance <= ${parseFloat(radius)}`;
+    }
+
+    query += ` ORDER BY ${sortField === 'distance' && latitude && longitude ? 'distance' : 'a.' + sortField} ${sortOrder}
+      LIMIT ? OFFSET ?`;
+
+    params.push(parseInt(limit), offset);
+
+    const [ads] = await promisePool.query(query, params);
+
+    // Get total count (without distance filter for simplicity)
+    const countQuery = `SELECT COUNT(*) as total FROM advertisements a ${whereClause}`;
+    const [countResult] = await promisePool.query(
+      countQuery,
+      params.slice(0, params.length - 2) // Remove limit and offset
+    );
+
+    const total = countResult[0].total;
+    const totalPages = Math.ceil(total / limit);
+
+    res.json({
+      success: true,
+      data: {
+        advertisements: ads.map(ad => ({
+          ...ad,
+          images: ad.images ? JSON.parse(ad.images) : [],
+          distance: ad.distance ? parseFloat(ad.distance).toFixed(2) : null
+        })),
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total,
+          total_pages: totalPages
+        },
+        filters_applied: {
+          search,
+          category_id,
+          subcategory_id,
+          activity_id,
+          condition_id,
+          price_range: { min: min_price, max: max_price },
+          location: latitude && longitude ? { latitude, longitude, radius } : null
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Browse advertisements error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error browsing advertisements',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get featured advertisements
+ * GET /api/v1/mobile-app/advertisements/featured
+ */
+const getFeaturedAdvertisements = async (req, res) => {
+  try {
+    const { limit = 10 } = req.query;
+
+    const [ads] = await promisePool.query(
+      `SELECT a.*, c.name as category_name, sc.name as subcategory_name,
+             ul.name as location_name, ul.city, ul.country,
+             act.name as activity_name, cond.name as condition_name,
+             u.full_name as seller_name, u.id as seller_id
+       FROM advertisements a
+       LEFT JOIN categories c ON a.category_id = c.id
+       LEFT JOIN categories sc ON a.subcategory_id = sc.id
+       LEFT JOIN user_locations ul ON a.location_id = ul.id
+       LEFT JOIN ad_activities act ON a.activity_id = act.id
+       LEFT JOIN ad_conditions cond ON a.condition_id = cond.id
+       LEFT JOIN users u ON a.user_id = u.id
+       WHERE a.status = 'published' AND a.featured = TRUE
+       ORDER BY a.created_at DESC
+       LIMIT ?`,
+      [parseInt(limit)]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        advertisements: ads.map(ad => ({
+          ...ad,
+          images: ad.images ? JSON.parse(ad.images) : []
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('Get featured advertisements error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching featured advertisements',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Get advertisement by ID (public view with authentication)
+ * GET /api/v1/mobile-app/advertisements/view/:id
+ */
+const getAdvertisementPublicView = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user ? req.user.id : null;
+
+    const [ads] = await promisePool.query(
+      `SELECT a.*, c.name as category_name, sc.name as subcategory_name,
+             ul.name as location_name, ul.street, ul.city, ul.region, ul.country, ul.zip_code,
+             ul.latitude, ul.longitude,
+             act.name as activity_name, cond.name as condition_name,
+             ag.name as age_name, gend.name as gender_name,
+             sz.name as size_name, col.name as color_name, col.hex_code,
+             u.id as seller_id, u.full_name as seller_name, u.avatar as seller_avatar,
+             u.created_at as seller_member_since
+       FROM advertisements a
+       LEFT JOIN categories c ON a.category_id = c.id
+       LEFT JOIN categories sc ON a.subcategory_id = sc.id
+       LEFT JOIN user_locations ul ON a.location_id = ul.id
+       LEFT JOIN ad_activities act ON a.activity_id = act.id
+       LEFT JOIN ad_conditions cond ON a.condition_id = cond.id
+       LEFT JOIN ad_ages ag ON a.age_id = ag.id
+       LEFT JOIN ad_genders gend ON a.gender_id = gend.id
+       LEFT JOIN ad_sizes sz ON a.size_id = sz.id
+       LEFT JOIN ad_colors col ON a.color_id = col.id
+       LEFT JOIN users u ON a.user_id = u.id
+       WHERE a.id = ? AND a.status = 'published'`,
+      [id]
+    );
+
+    if (ads.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Advertisement not found'
+      });
+    }
+
+    const ad = ads[0];
+
+    // Increment view count
+    await promisePool.query(
+      'UPDATE advertisements SET views_count = views_count + 1 WHERE id = ?',
+      [id]
+    );
+
+    // Check if user has favorited this ad (if authenticated)
+    let isFavorited = false;
+    if (userId) {
+      const [favorites] = await promisePool.query(
+        'SELECT id FROM favorites WHERE user_id = ? AND product_id = ?',
+        [userId, id]
+      );
+      isFavorited = favorites.length > 0;
+    }
+
+    // Get seller's rating
+    const [sellerRating] = await promisePool.query(
+      `SELECT AVG(rating) as average_rating, COUNT(*) as total_reviews
+       FROM reviews WHERE reviewed_user_id = ?`,
+      [ad.seller_id]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        advertisement: {
+          ...ad,
+          images: ad.images ? JSON.parse(ad.images) : [],
+          is_favorited: isFavorited,
+          seller: {
+            id: ad.seller_id,
+            name: ad.seller_name,
+            avatar: ad.seller_avatar,
+            member_since: ad.seller_member_since,
+            average_rating: sellerRating[0].average_rating || 0,
+            total_reviews: sellerRating[0].total_reviews || 0
+          }
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get advertisement public view error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching advertisement',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getFilters,
   getUserLocations,
@@ -599,5 +902,8 @@ module.exports = {
   updateAdvertisement,
   getUserAdvertisements,
   getAdvertisement,
-  deleteAdvertisement
+  deleteAdvertisement,
+  browseAdvertisements,
+  getFeaturedAdvertisements,
+  getAdvertisementPublicView
 };
