@@ -72,6 +72,8 @@ const mobileAuthRoutes = require('./routes/mobile-app/auth.routes');
 const mobileSubscriptionRoutes = require('./routes/mobile-app/subscription.routes');
 const mobileAdvertisementRoutes = require('./routes/mobile-app/advertisement.routes');
 const mobileLocationRoutes = require('./routes/mobile-app/location.routes');
+const mobileSettingsRoutes = require('./routes/mobile-app/settings.routes');
+const mobileUploadRoutes = require('./routes/mobile-app/upload.routes');
 
 // Mount routes
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
@@ -91,6 +93,8 @@ app.use(`/api/${API_VERSION}/mobile-app/auth`, mobileAuthRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/subscription`, mobileSubscriptionRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/advertisements`, mobileAdvertisementRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/locations`, mobileLocationRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/settings`, mobileSettingsRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/upload`, mobileUploadRoutes);
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));

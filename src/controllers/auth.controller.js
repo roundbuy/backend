@@ -195,6 +195,75 @@ const getMe = async (req, res) => {
 };
 
 /**
+ * Refresh access token using refresh token
+ */
+const refreshToken = async (req, res) => {
+  try {
+    const { refresh_token } = req.body;
+
+    if (!refresh_token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Refresh token is required'
+      });
+    }
+
+    // Verify refresh token
+    const { verifyRefreshToken } = require('../utils/jwt');
+    let decoded;
+
+    try {
+      decoded = verifyRefreshToken(refresh_token);
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired refresh token'
+      });
+    }
+
+    const userId = decoded.userId;
+
+    // Check if user still exists and is active
+    const [users] = await promisePool.query(
+      'SELECT id, role, is_active FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(401).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = users[0];
+
+    if (!user.is_active) {
+      return res.status(401).json({
+        success: false,
+        message: 'Account is deactivated'
+      });
+    }
+
+    // Generate new tokens
+    const tokens = generateTokens(user.id, user.role);
+
+    res.json({
+      success: true,
+      message: 'Token refreshed successfully',
+      data: tokens
+    });
+  } catch (error) {
+    console.error('Refresh token error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error refreshing token',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Logout (client-side token removal mainly)
  */
 const logout = async (req, res) => {
@@ -208,5 +277,6 @@ module.exports = {
   register,
   login,
   getMe,
+  refreshToken,
   logout
 };

@@ -270,7 +270,8 @@ const login = async (req, res) => {
 
     // Get user
     const [users] = await promisePool.query(
-      `SELECT id, email, password_hash, full_name, role, is_active, is_verified, language_preference
+      `SELECT id, email, password_hash, full_name, role, is_active, is_verified, language_preference,
+              subscription_plan_id, subscription_start_date, subscription_end_date
        FROM users WHERE email = ?`,
       [email]
     );
@@ -319,6 +320,10 @@ const login = async (req, res) => {
     if (!hasSubscription) {
       // Allow login but flag that subscription is needed
       console.log(`⚠️ User ${user.email} logged in without active subscription`);
+      return res.status(401).json({
+        success: false,
+        message: 'logged in without active subscription'
+      });
     }
 
     // Verify password
@@ -352,7 +357,10 @@ const login = async (req, res) => {
           language_preference: user.language_preference,
           is_verified: user.is_verified,
           has_active_subscription: hasSubscription,
-          requires_subscription: !hasSubscription
+          requires_subscription: !hasSubscription,
+          subscription_plan_id: user.subscription_plan_id,
+          subscription_start_date: user.subscription_start_date,
+          subscription_end_date: user.subscription_end_date
         },
         ...tokens,
         requires_subscription: !hasSubscription

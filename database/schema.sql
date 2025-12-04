@@ -35,6 +35,26 @@ DROP TABLE IF EXISTS ad_genders;
 DROP TABLE IF EXISTS ad_sizes;
 DROP TABLE IF EXISTS ad_colors;
 DROP TABLE IF EXISTS users;
+DROP TABLE IF EXISTS countries;
+
+-- Create countries table
+CREATE TABLE countries (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(3) UNIQUE NOT NULL COMMENT 'ISO country code (IND, USA, GBR)',
+    iso_code VARCHAR(2) UNIQUE NOT NULL COMMENT 'ISO 3166-1 alpha-2 code',
+    phone_code VARCHAR(10) COMMENT 'Country calling code (+91, +1, +44)',
+    currency_code VARCHAR(3) COMMENT 'Default currency for country',
+    flag_emoji VARCHAR(10) COMMENT 'Country flag emoji 🇮🇳',
+    is_active BOOLEAN DEFAULT TRUE,
+    is_default BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_code (code),
+    INDEX idx_iso_code (iso_code),
+    INDEX idx_is_active (is_active),
+    INDEX idx_is_default (is_default)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create currencies table
 CREATE TABLE currencies (
@@ -208,6 +228,8 @@ CREATE TABLE users (
     verification_expires DATETIME DEFAULT NULL,
     is_active BOOLEAN DEFAULT TRUE,
     language_preference VARCHAR(5) DEFAULT 'en',
+    country_code VARCHAR(3) DEFAULT NULL COMMENT 'User selected country',
+    currency_code VARCHAR(3) DEFAULT NULL COMMENT 'User selected currency',
     last_login DATETIME,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -215,7 +237,9 @@ CREATE TABLE users (
     INDEX idx_role (role),
     INDEX idx_subscription_plan (subscription_plan_id),
     INDEX idx_subscription_end_date (subscription_end_date),
-    INDEX idx_verification_token (verification_token)
+    INDEX idx_verification_token (verification_token),
+    INDEX idx_country_code (country_code),
+    INDEX idx_currency_code (currency_code)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create subscription_plans table
@@ -714,7 +738,21 @@ INSERT INTO currencies (code, name, symbol, is_active, is_default, exchange_rate
 ('USD', 'US Dollar', '$', TRUE, FALSE, 1.000000),
 ('EUR', 'Euro', '€', TRUE, FALSE, 0.850000),
 ('INR', 'Indian Rupee', '₹', TRUE, TRUE, 83.000000),
-('GBP', 'British Pound', '£', TRUE, FALSE, 0.730000);
+('GBP', 'British Pound', '£', TRUE, FALSE, 0.730000),
+('AUD', 'Australian Dollar', 'A$', TRUE, FALSE, 1.520000),
+('CAD', 'Canadian Dollar', 'C$', TRUE, FALSE, 1.350000),
+('JPY', 'Japanese Yen', '¥', TRUE, FALSE, 148.000000);
+
+-- Insert default countries
+INSERT INTO countries (name, code, iso_code, phone_code, currency_code, flag_emoji, is_active, is_default) VALUES
+('India', 'IND', 'IN', '+91', 'INR', '🇮🇳', TRUE, TRUE),
+('United States', 'USA', 'US', '+1', 'USD', '🇺🇸', TRUE, FALSE),
+('United Kingdom', 'GBR', 'GB', '+44', 'GBP', '🇬🇧', TRUE, FALSE),
+('Germany', 'DEU', 'DE', '+49', 'EUR', '🇩🇪', TRUE, FALSE),
+('France', 'FRA', 'FR', '+33', 'EUR', '🇫🇷', TRUE, FALSE),
+('Canada', 'CAN', 'CA', '+1', 'CAD', '🇨🇦', TRUE, FALSE),
+('Australia', 'AUS', 'AU', '+61', 'AUD', '🇦🇺', TRUE, FALSE),
+('Japan', 'JPN', 'JP', '+81', 'JPY', '🇯🇵', TRUE, FALSE);
 
 -- Insert default languages
 INSERT INTO languages (name, code, is_default, is_active) VALUES

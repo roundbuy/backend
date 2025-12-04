@@ -236,11 +236,47 @@ exports.getSubscriptionPlans = async (req, res) => {
 
 exports.createSubscriptionPlan = async (req, res) => {
   try {
-    const { name, slug, description, price, duration_days, features, is_active, sort_order } = req.body;
+    const {
+      name,
+      slug,
+      subheading,
+      description,
+      description_bullets,
+      price,
+      renewal_price,
+      duration_days,
+      features,
+      color_hex,
+      tag,
+      stripe_product_id,
+      stripe_price_id,
+      is_active,
+      sort_order
+    } = req.body;
 
     const [result] = await db.query(
-      'INSERT INTO subscription_plans (name, slug, description, price, duration_days, features, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [name, slug, description, price, duration_days, JSON.stringify(features), is_active, sort_order]
+      `INSERT INTO subscription_plans
+       (name, slug, subheading, description, description_bullets, price, renewal_price,
+        duration_days, features, color_hex, tag, stripe_product_id, stripe_price_id,
+        is_active, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        name,
+        slug,
+        subheading || null,
+        description,
+        description_bullets ? JSON.stringify(description_bullets) : null,
+        price,
+        renewal_price || null,
+        duration_days,
+        JSON.stringify(features),
+        color_hex || '#4CAF50',
+        tag || null,
+        stripe_product_id || null,
+        stripe_price_id || null,
+        is_active,
+        sort_order
+      ]
     );
 
     res.status(201).json({ success: true, message: 'Subscription plan created successfully', id: result.insertId });
@@ -253,11 +289,60 @@ exports.createSubscriptionPlan = async (req, res) => {
 exports.updateSubscriptionPlan = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, description, price, duration_days, features, is_active, sort_order } = req.body;
+    const {
+      name,
+      slug,
+      subheading,
+      description,
+      description_bullets,
+      price,
+      renewal_price,
+      duration_days,
+      features,
+      color_hex,
+      tag,
+      stripe_product_id,
+      stripe_price_id,
+      is_active,
+      sort_order
+    } = req.body;
 
     await db.query(
-      'UPDATE subscription_plans SET name = ?, slug = ?, description = ?, price = ?, duration_days = ?, features = ?, is_active = ?, sort_order = ? WHERE id = ?',
-      [name, slug, description, price, duration_days, JSON.stringify(features), is_active, sort_order, id]
+      `UPDATE subscription_plans SET
+        name = ?,
+        slug = ?,
+        subheading = ?,
+        description = ?,
+        description_bullets = ?,
+        price = ?,
+        renewal_price = ?,
+        duration_days = ?,
+        features = ?,
+        color_hex = ?,
+        tag = ?,
+        stripe_product_id = ?,
+        stripe_price_id = ?,
+        is_active = ?,
+        sort_order = ?
+       WHERE id = ?`,
+      [
+        name,
+        slug,
+        subheading || null,
+        description,
+        description_bullets ? JSON.stringify(description_bullets) : null,
+        price,
+        renewal_price || null,
+        duration_days,
+        JSON.stringify(features),
+        color_hex || '#4CAF50',
+        tag || null,
+        stripe_product_id || null,
+        stripe_price_id || null,
+        is_active,
+        sort_order,
+        id
+      ]
     );
 
     res.json({ success: true, message: 'Subscription plan updated successfully' });
@@ -1063,6 +1148,146 @@ exports.reviewModerationItem = async (req, res) => {
   }
 };
 
+// ==================== CURRENCIES ====================
+
+exports.getCurrencies = async (req, res) => {
+  try {
+    const [currencies] = await db.query('SELECT * FROM currencies ORDER BY is_default DESC, name ASC');
+
+    res.json({ success: true, data: currencies });
+  } catch (error) {
+    console.error('Get currencies error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch currencies', error: error.message });
+  }
+};
+
+exports.createCurrency = async (req, res) => {
+  try {
+    const { code, name, symbol, exchange_rate, is_active } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO currencies (code, name, symbol, exchange_rate, is_active) VALUES (?, ?, ?, ?, ?)',
+      [code, name, symbol, exchange_rate || 1.0, is_active !== undefined ? is_active : true]
+    );
+
+    res.status(201).json({ success: true, message: 'Currency created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create currency error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create currency', error: error.message });
+  }
+};
+
+exports.updateCurrency = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { code, name, symbol, exchange_rate, is_active, is_default } = req.body;
+
+    // If setting as default, remove default from other currencies
+    if (is_default) {
+      await db.query('UPDATE currencies SET is_default = FALSE');
+    }
+
+    await db.query(
+      'UPDATE currencies SET code = ?, name = ?, symbol = ?, exchange_rate = ?, is_active = ?, is_default = ? WHERE id = ?',
+      [code, name, symbol, exchange_rate, is_active, is_default, id]
+    );
+
+    res.json({ success: true, message: 'Currency updated successfully' });
+  } catch (error) {
+    console.error('Update currency error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update currency', error: error.message });
+  }
+};
+
+exports.deleteCurrency = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if it's the default currency
+    const [currency] = await db.query('SELECT is_default FROM currencies WHERE id = ?', [id]);
+    if (currency.length > 0 && currency[0].is_default) {
+      return res.status(400).json({ success: false, message: 'Cannot delete default currency' });
+    }
+
+    await db.query('DELETE FROM currencies WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Currency deleted successfully' });
+  } catch (error) {
+    console.error('Delete currency error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete currency', error: error.message });
+  }
+};
+
+// ==================== COUNTRIES ====================
+
+exports.getCountries = async (req, res) => {
+  try {
+    const [countries] = await db.query('SELECT * FROM countries ORDER BY is_default DESC, name ASC');
+
+    res.json({ success: true, data: countries });
+  } catch (error) {
+    console.error('Get countries error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch countries', error: error.message });
+  }
+};
+
+exports.createCountry = async (req, res) => {
+  try {
+    const { name, code, iso_code, phone_code, currency_code, flag_emoji, is_active } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO countries (name, code, iso_code, phone_code, currency_code, flag_emoji, is_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [name, code, iso_code, phone_code, currency_code, flag_emoji, is_active !== undefined ? is_active : true]
+    );
+
+    res.status(201).json({ success: true, message: 'Country created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create country error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create country', error: error.message });
+  }
+};
+
+exports.updateCountry = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, code, iso_code, phone_code, currency_code, flag_emoji, is_active, is_default } = req.body;
+
+    // If setting as default, remove default from other countries
+    if (is_default) {
+      await db.query('UPDATE countries SET is_default = FALSE');
+    }
+
+    await db.query(
+      'UPDATE countries SET name = ?, code = ?, iso_code = ?, phone_code = ?, currency_code = ?, flag_emoji = ?, is_active = ?, is_default = ? WHERE id = ?',
+      [name, code, iso_code, phone_code, currency_code, flag_emoji, is_active, is_default, id]
+    );
+
+    res.json({ success: true, message: 'Country updated successfully' });
+  } catch (error) {
+    console.error('Update country error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update country', error: error.message });
+  }
+};
+
+exports.deleteCountry = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if it's the default country
+    const [country] = await db.query('SELECT is_default FROM countries WHERE id = ?', [id]);
+    if (country.length > 0 && country[0].is_default) {
+      return res.status(400).json({ success: false, message: 'Cannot delete default country' });
+    }
+
+    await db.query('DELETE FROM countries WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Country deleted successfully' });
+  } catch (error) {
+    console.error('Delete country error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete country', error: error.message });
+  }
+};
+
 // ==================== API LOGS ====================
 
 exports.getAPILogs = async (req, res) => {
@@ -1147,5 +1372,453 @@ exports.getCategories = async (req, res) => {
   } catch (error) {
     console.error('Get categories error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch categories', error: error.message });
+  }
+};
+
+exports.createCategory = async (req, res) => {
+  try {
+    const { name, slug, parent_id, icon, description, is_active, sort_order } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO categories (name, slug, parent_id, icon, description, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [name, slug, parent_id || null, icon || null, description || null, is_active !== undefined ? is_active : true, sort_order || 0]
+    );
+
+    res.status(201).json({ success: true, message: 'Category created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create category error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create category', error: error.message });
+  }
+};
+
+exports.updateCategory = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, parent_id, icon, description, is_active, sort_order } = req.body;
+
+    await db.query(
+      'UPDATE categories SET name = ?, slug = ?, parent_id = ?, icon = ?, description = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, parent_id || null, icon || null, description || null, is_active, sort_order || 0, id]
+    );
+
+    res.json({ success: true, message: 'Category updated successfully' });
+  } catch (error) {
+    console.error('Update category error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update category', error: error.message });
+  }
+};
+
+exports.deleteCategory = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if category has subcategories
+    const [subcategories] = await db.query('SELECT COUNT(*) as count FROM categories WHERE parent_id = ?', [id]);
+    if (subcategories[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete category with subcategories' });
+    }
+
+    // Check if category is used in advertisements
+    const [advertisements] = await db.query('SELECT COUNT(*) as count FROM advertisements WHERE category_id = ?', [id]);
+    if (advertisements[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete category that is used in advertisements' });
+    }
+
+    await db.query('DELETE FROM categories WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Category deleted successfully' });
+  } catch (error) {
+    console.error('Delete category error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete category', error: error.message });
+  }
+};
+
+// ==================== AD ACTIVITIES ====================
+
+exports.getAdActivities = async (req, res) => {
+  try {
+    const [activities] = await db.query('SELECT * FROM ad_activities ORDER BY sort_order ASC');
+
+    res.json({ success: true, data: activities });
+  } catch (error) {
+    console.error('Get ad activities error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch ad activities', error: error.message });
+  }
+};
+
+exports.createAdActivity = async (req, res) => {
+  try {
+    const { name, slug, is_active, sort_order } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO ad_activities (name, slug, is_active, sort_order) VALUES (?, ?, ?, ?)',
+      [name, slug, is_active !== undefined ? is_active : true, sort_order || 0]
+    );
+
+    res.status(201).json({ success: true, message: 'Ad activity created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create ad activity error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create ad activity', error: error.message });
+  }
+};
+
+exports.updateAdActivity = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, is_active, sort_order } = req.body;
+
+    await db.query(
+      'UPDATE ad_activities SET name = ?, slug = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, is_active, sort_order || 0, id]
+    );
+
+    res.json({ success: true, message: 'Ad activity updated successfully' });
+  } catch (error) {
+    console.error('Update ad activity error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update ad activity', error: error.message });
+  }
+};
+
+exports.deleteAdActivity = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if activity is used in advertisements
+    const [advertisements] = await db.query('SELECT COUNT(*) as count FROM advertisements WHERE activity_id = ?', [id]);
+    if (advertisements[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete activity that is used in advertisements' });
+    }
+
+    await db.query('DELETE FROM ad_activities WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Ad activity deleted successfully' });
+  } catch (error) {
+    console.error('Delete ad activity error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete ad activity', error: error.message });
+  }
+};
+
+// ==================== AD CONDITIONS ====================
+
+exports.getAdConditions = async (req, res) => {
+  try {
+    const [conditions] = await db.query('SELECT * FROM ad_conditions ORDER BY sort_order ASC');
+
+    res.json({ success: true, data: conditions });
+  } catch (error) {
+    console.error('Get ad conditions error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch ad conditions', error: error.message });
+  }
+};
+
+exports.createAdCondition = async (req, res) => {
+  try {
+    const { name, slug, is_active, sort_order } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO ad_conditions (name, slug, is_active, sort_order) VALUES (?, ?, ?, ?)',
+      [name, slug, is_active !== undefined ? is_active : true, sort_order || 0]
+    );
+
+    res.status(201).json({ success: true, message: 'Ad condition created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create ad condition error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create ad condition', error: error.message });
+  }
+};
+
+exports.updateAdCondition = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, is_active, sort_order } = req.body;
+
+    await db.query(
+      'UPDATE ad_conditions SET name = ?, slug = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, is_active, sort_order || 0, id]
+    );
+
+    res.json({ success: true, message: 'Ad condition updated successfully' });
+  } catch (error) {
+    console.error('Update ad condition error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update ad condition', error: error.message });
+  }
+};
+
+exports.deleteAdCondition = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if condition is used in advertisements
+    const [advertisements] = await db.query('SELECT COUNT(*) as count FROM advertisements WHERE condition_id = ?', [id]);
+    if (advertisements[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete condition that is used in advertisements' });
+    }
+
+    await db.query('DELETE FROM ad_conditions WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Ad condition deleted successfully' });
+  } catch (error) {
+    console.error('Delete ad condition error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete ad condition', error: error.message });
+  }
+};
+
+// ==================== AD AGES ====================
+
+exports.getAdAges = async (req, res) => {
+  try {
+    const [ages] = await db.query('SELECT * FROM ad_ages ORDER BY sort_order ASC');
+
+    res.json({ success: true, data: ages });
+  } catch (error) {
+    console.error('Get ad ages error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch ad ages', error: error.message });
+  }
+};
+
+exports.createAdAge = async (req, res) => {
+  try {
+    const { name, slug, is_active, sort_order } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO ad_ages (name, slug, is_active, sort_order) VALUES (?, ?, ?, ?)',
+      [name, slug, is_active !== undefined ? is_active : true, sort_order || 0]
+    );
+
+    res.status(201).json({ success: true, message: 'Ad age created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create ad age error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create ad age', error: error.message });
+  }
+};
+
+exports.updateAdAge = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, is_active, sort_order } = req.body;
+
+    await db.query(
+      'UPDATE ad_ages SET name = ?, slug = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, is_active, sort_order || 0, id]
+    );
+
+    res.json({ success: true, message: 'Ad age updated successfully' });
+  } catch (error) {
+    console.error('Update ad age error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update ad age', error: error.message });
+  }
+};
+
+exports.deleteAdAge = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if age is used in advertisements
+    const [advertisements] = await db.query('SELECT COUNT(*) as count FROM advertisements WHERE age_id = ?', [id]);
+    if (advertisements[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete age that is used in advertisements' });
+    }
+
+    await db.query('DELETE FROM ad_ages WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Ad age deleted successfully' });
+  } catch (error) {
+    console.error('Delete ad age error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete ad age', error: error.message });
+  }
+};
+
+// ==================== AD GENDERS ====================
+
+exports.getAdGenders = async (req, res) => {
+  try {
+    const [genders] = await db.query('SELECT * FROM ad_genders ORDER BY sort_order ASC');
+
+    res.json({ success: true, data: genders });
+  } catch (error) {
+    console.error('Get ad genders error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch ad genders', error: error.message });
+  }
+};
+
+exports.createAdGender = async (req, res) => {
+  try {
+    const { name, slug, is_active, sort_order } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO ad_genders (name, slug, is_active, sort_order) VALUES (?, ?, ?, ?)',
+      [name, slug, is_active !== undefined ? is_active : true, sort_order || 0]
+    );
+
+    res.status(201).json({ success: true, message: 'Ad gender created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create ad gender error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create ad gender', error: error.message });
+  }
+};
+
+exports.updateAdGender = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, is_active, sort_order } = req.body;
+
+    await db.query(
+      'UPDATE ad_genders SET name = ?, slug = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, is_active, sort_order || 0, id]
+    );
+
+    res.json({ success: true, message: 'Ad gender updated successfully' });
+  } catch (error) {
+    console.error('Update ad gender error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update ad gender', error: error.message });
+  }
+};
+
+exports.deleteAdGender = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if gender is used in advertisements
+    const [advertisements] = await db.query('SELECT COUNT(*) as count FROM advertisements WHERE gender_id = ?', [id]);
+    if (advertisements[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete gender that is used in advertisements' });
+    }
+
+    await db.query('DELETE FROM ad_genders WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Ad gender deleted successfully' });
+  } catch (error) {
+    console.error('Delete ad gender error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete ad gender', error: error.message });
+  }
+};
+
+// ==================== AD SIZES ====================
+
+exports.getAdSizes = async (req, res) => {
+  try {
+    const [sizes] = await db.query('SELECT * FROM ad_sizes ORDER BY sort_order ASC');
+
+    res.json({ success: true, data: sizes });
+  } catch (error) {
+    console.error('Get ad sizes error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch ad sizes', error: error.message });
+  }
+};
+
+exports.createAdSize = async (req, res) => {
+  try {
+    const { name, slug, is_active, sort_order } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO ad_sizes (name, slug, is_active, sort_order) VALUES (?, ?, ?, ?)',
+      [name, slug, is_active !== undefined ? is_active : true, sort_order || 0]
+    );
+
+    res.status(201).json({ success: true, message: 'Ad size created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create ad size error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create ad size', error: error.message });
+  }
+};
+
+exports.updateAdSize = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, is_active, sort_order } = req.body;
+
+    await db.query(
+      'UPDATE ad_sizes SET name = ?, slug = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, is_active, sort_order || 0, id]
+    );
+
+    res.json({ success: true, message: 'Ad size updated successfully' });
+  } catch (error) {
+    console.error('Update ad size error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update ad size', error: error.message });
+  }
+};
+
+exports.deleteAdSize = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if size is used in advertisements
+    const [advertisements] = await db.query('SELECT COUNT(*) as count FROM advertisements WHERE size_id = ?', [id]);
+    if (advertisements[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete size that is used in advertisements' });
+    }
+
+    await db.query('DELETE FROM ad_sizes WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Ad size deleted successfully' });
+  } catch (error) {
+    console.error('Delete ad size error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete ad size', error: error.message });
+  }
+};
+
+// ==================== AD COLORS ====================
+
+exports.getAdColors = async (req, res) => {
+  try {
+    const [colors] = await db.query('SELECT * FROM ad_colors ORDER BY sort_order ASC');
+
+    res.json({ success: true, data: colors });
+  } catch (error) {
+    console.error('Get ad colors error:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch ad colors', error: error.message });
+  }
+};
+
+exports.createAdColor = async (req, res) => {
+  try {
+    const { name, slug, hex_code, is_active, sort_order } = req.body;
+
+    const [result] = await db.query(
+      'INSERT INTO ad_colors (name, slug, hex_code, is_active, sort_order) VALUES (?, ?, ?, ?, ?)',
+      [name, slug, hex_code || null, is_active !== undefined ? is_active : true, sort_order || 0]
+    );
+
+    res.status(201).json({ success: true, message: 'Ad color created successfully', id: result.insertId });
+  } catch (error) {
+    console.error('Create ad color error:', error);
+    res.status(500).json({ success: false, message: 'Failed to create ad color', error: error.message });
+  }
+};
+
+exports.updateAdColor = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, slug, hex_code, is_active, sort_order } = req.body;
+
+    await db.query(
+      'UPDATE ad_colors SET name = ?, slug = ?, hex_code = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, hex_code || null, is_active, sort_order || 0, id]
+    );
+
+    res.json({ success: true, message: 'Ad color updated successfully' });
+  } catch (error) {
+    console.error('Update ad color error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update ad color', error: error.message });
+  }
+};
+
+exports.deleteAdColor = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // Check if color is used in advertisements
+    const [advertisements] = await db.query('SELECT COUNT(*) as count FROM advertisements WHERE color_id = ?', [id]);
+    if (advertisements[0].count > 0) {
+      return res.status(400).json({ success: false, message: 'Cannot delete color that is used in advertisements' });
+    }
+
+    await db.query('DELETE FROM ad_colors WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Ad color deleted successfully' });
+  } catch (error) {
+    console.error('Delete ad color error:', error);
+    res.status(500).json({ success: false, message: 'Failed to delete ad color', error: error.message });
   }
 };

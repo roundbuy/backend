@@ -104,9 +104,9 @@ const getPlans = async (req, res) => {
         subheading: plan.subheading,
         subtitle: plan.subheading || plan.description,
         description: plan.description,
-        description_bullets: plan.description_bullets ? JSON.parse(plan.description_bullets) : [],
+        description_bullets: plan.description_bullets ? (typeof plan.description_bullets === 'string' ? JSON.parse(plan.description_bullets) : plan.description_bullets) : [],
         duration_days: plan.duration_days,
-        features: JSON.parse(plan.features || '{}'),
+        features: plan.features ? (typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features) : {},
         color: plan.color_hex || '#4CAF50',
         tag: plan.tag, // 'best', 'popular', 'recommended', or null
         prices: prices,
@@ -230,7 +230,7 @@ const getPlanDetails = async (req, res) => {
           slug: plan.slug,
           description: plan.description,
           duration_days: plan.duration_days,
-          features: JSON.parse(plan.features || '{}'),
+          features: plan.features ? (typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features) : {},
           prices: planPrices.map(p => ({
             currency_code: p.code,
             currency_name: p.name,
@@ -613,10 +613,119 @@ const getStripeConfig = async (req, res) => {
   }
 };
 
+/**
+ * Activate free plan (Green plan) - allows activation for new users after email verification
+ * POST /api/v1/mobile-app/subscription/activate-free
+ */
+const activateFreePlan = async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    // Check if we have email in body (for new users) or user ID from auth (for logged in users)
+    let userId;
+    let userEmail;
+    
+    if (email) {
+      // New user flow - get user by email after email verification
+      const [users] = await promisePool.query(
+        'SELECT id, email FROM users WHERE email = ? AND is_verified = TRUE LIMIT 1',
+        [email]
+      );
+      
+      if (users.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: 'User not found or email not verified'
+        });
+      }
+      
+      userId = users[0].id;
+      userEmail = users[0].email;
+    } else {
+      // Logged in user flow
+      userId = req.user.id;
+      userEmail = req.user.email;
+    }
+
+    // Get the free/green plan
+    const [plans] = await promisePool.query(
+      `SELECT id, name, slug, duration_days FROM subscription_plans 
+       WHERE (slug = 'green' OR name = 'Green') AND is_active = TRUE
+       LIMIT 1`
+    );
+
+    if (plans.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Free plan not found'
+      });
+    }
+
+    const plan = plans[0];
+
+    // Check if user already has an active subscription
+    const [existingSubs] = await promisePool.query(
+      'SELECT id FROM user_subscriptions WHERE user_id = ? AND status = "active" AND end_date > NOW()',
+      [userId]
+    );
+
+    if (existingSubs.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'User already has an active subscription'
+      });
+    }
+
+    // Calculate subscription dates
+    const startDate = new Date();
+    const endDate = new Date();
+    endDate.setDate(endDate.getDate() + plan.duration_days);
+
+    // Create user subscription for free plan
+    const [subResult] = await promisePool.query(
+      `INSERT INTO user_subscriptions
+       (user_id, subscription_plan_id, start_date, end_date, status,
+        payment_method, amount_paid, currency_code, auto_renew)
+       VALUES (?, ?, ?, ?, 'active', 'free', 0, 'INR', FALSE)`,
+      [userId, plan.id, startDate, endDate]
+    );
+
+    // Update user's subscription
+    await promisePool.query(
+      'UPDATE users SET subscription_plan_id = ?, subscription_start_date = ?, subscription_end_date = ? WHERE id = ?',
+      [plan.id, startDate, endDate, userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Free plan activated successfully',
+      data: {
+        subscription: {
+          id: subResult.insertId,
+          plan_name: plan.name,
+          plan_slug: plan.slug,
+          start_date: startDate,
+          end_date: endDate,
+          amount_paid: 0,
+          currency: 'INR'
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Activate free plan error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error activating free plan',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getPlans,
   getPlanDetails,
   purchasePlan,
+  activateFreePlan,
   getTransactionStatus,
   getSavedPaymentMethods,
   getStripeConfig

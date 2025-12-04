@@ -36,6 +36,14 @@ router.get('/plans/:planId', mobileSubscriptionController.getPlanDetails);
 router.post('/purchase', authenticate, mobileSubscriptionController.purchasePlan);
 
 /**
+ * @route POST /api/v1/mobile-app/subscription/activate-free
+ * @desc Activate free plan (Green plan) for user
+ * @access Public (allows new users after email verification)
+ * @body {string} email - User's email (required for new users)
+ */
+router.post('/activate-free', mobileSubscriptionController.activateFreePlan);
+
+/**
  * @route GET /api/v1/mobile-app/subscription/transaction/:transactionId
  * @desc Get transaction status and details
  * @access Private (requires authentication)

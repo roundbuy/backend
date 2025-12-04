@@ -8,16 +8,19 @@ const fs = require('fs').promises;
  */
 const getFilters = async (req, res) => {
   try {
-    // Get categories and subcategories
+    // Get categories
     const [categories] = await promisePool.query(
-      `SELECT c1.id, c1.name, c1.slug,
-              JSON_ARRAYAGG(JSON_OBJECT('id', c2.id, 'name', c2.name, 'slug', c2.slug)) as subcategories
-       FROM categories c1
-       LEFT JOIN categories c2 ON c2.parent_id = c1.id AND c2.is_active = TRUE
-       WHERE c1.parent_id IS NULL AND c1.is_active = TRUE
-       GROUP BY c1.id, c1.name, c1.slug
-       ORDER BY c1.sort_order`
+      'SELECT id, name, slug FROM categories WHERE parent_id IS NULL AND is_active = TRUE ORDER BY sort_order'
     );
+
+    // Get subcategories for each category
+    for (const category of categories) {
+      const [subcategories] = await promisePool.query(
+        'SELECT id, name, slug FROM categories WHERE parent_id = ? AND is_active = TRUE ORDER BY sort_order',
+        [category.id]
+      );
+      category.subcategories = subcategories;
+    }
 
     // Get activities
     const [activities] = await promisePool.query(

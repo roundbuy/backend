@@ -54,8 +54,10 @@ const verifyRefreshToken = (token) => {
  */
 const generateTokens = (userId, role = 'subscriber') => {
   return {
-    accessToken: generateAccessToken(userId, role),
-    refreshToken: generateRefreshToken(userId)
+    access_token: generateAccessToken(userId, role),
+    refresh_token: generateRefreshToken(userId),
+    token_type: 'Bearer',
+    expires_in: 604800 // 7 days in seconds
   };
 };
 

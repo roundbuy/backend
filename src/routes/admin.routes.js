@@ -85,5 +85,56 @@ router.get('/api-logs/:id', adminController.getAPILogDetail);
 
 // ==================== CATEGORIES ====================
 router.get('/categories', adminController.getCategories);
+router.post('/categories', adminController.createCategory);
+router.put('/categories/:id', adminController.updateCategory);
+router.delete('/categories/:id', authorize('admin'), adminController.deleteCategory);
+
+// ==================== AD ACTIVITIES ====================
+router.get('/ad-activities', adminController.getAdActivities);
+router.post('/ad-activities', adminController.createAdActivity);
+router.put('/ad-activities/:id', adminController.updateAdActivity);
+router.delete('/ad-activities/:id', authorize('admin'), adminController.deleteAdActivity);
+
+// ==================== AD CONDITIONS ====================
+router.get('/ad-conditions', adminController.getAdConditions);
+router.post('/ad-conditions', adminController.createAdCondition);
+router.put('/ad-conditions/:id', adminController.updateAdCondition);
+router.delete('/ad-conditions/:id', authorize('admin'), adminController.deleteAdCondition);
+
+// ==================== AD AGES ====================
+router.get('/ad-ages', adminController.getAdAges);
+router.post('/ad-ages', adminController.createAdAge);
+router.put('/ad-ages/:id', adminController.updateAdAge);
+router.delete('/ad-ages/:id', authorize('admin'), adminController.deleteAdAge);
+
+// ==================== AD GENDERS ====================
+router.get('/ad-genders', adminController.getAdGenders);
+router.post('/ad-genders', adminController.createAdGender);
+router.put('/ad-genders/:id', adminController.updateAdGender);
+router.delete('/ad-genders/:id', authorize('admin'), adminController.deleteAdGender);
+
+// ==================== AD SIZES ====================
+router.get('/ad-sizes', adminController.getAdSizes);
+router.post('/ad-sizes', adminController.createAdSize);
+router.put('/ad-sizes/:id', adminController.updateAdSize);
+router.delete('/ad-sizes/:id', authorize('admin'), adminController.deleteAdSize);
+
+// ==================== AD COLORS ====================
+router.get('/ad-colors', adminController.getAdColors);
+router.post('/ad-colors', adminController.createAdColor);
+router.put('/ad-colors/:id', adminController.updateAdColor);
+router.delete('/ad-colors/:id', authorize('admin'), adminController.deleteAdColor);
+
+// ==================== CURRENCIES ====================
+router.get('/currencies', adminController.getCurrencies);
+router.post('/currencies', adminController.createCurrency);
+router.put('/currencies/:id', adminController.updateCurrency);
+router.delete('/currencies/:id', authorize('admin'), adminController.deleteCurrency);
+
+// ==================== COUNTRIES ====================
+router.get('/countries', adminController.getCountries);
+router.post('/countries', adminController.createCountry);
+router.put('/countries/:id', adminController.updateCountry);
+router.delete('/countries/:id', authorize('admin'), adminController.deleteCountry);
 
 module.exports = router;
