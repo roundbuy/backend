@@ -11,7 +11,7 @@ const getUserById = async (req, res) => {
     const { id } = req.params;
 
     const [users] = await promisePool.query(
-      `SELECT u.id, u.email, u.full_name, u.phone, u.avatar, u.role, 
+      `SELECT u.id, u.email, u.full_name, u.phone, u.avatar, u.billing_address, u.role,
               u.is_verified, u.is_active, u.language_preference, u.created_at,
               sp.name as subscription_plan_name, sp.slug as subscription_plan_slug,
               u.subscription_start_date, u.subscription_end_date
@@ -48,7 +48,7 @@ const getUserById = async (req, res) => {
 const updateUser = async (req, res) => {
   try {
     const { id } = req.params;
-    const { full_name, phone, language_preference } = req.body;
+    const { full_name, phone, billing_address, language_preference } = req.body;
 
     // Check authorization - users can only update their own profile unless admin
     if (req.user.id != id && req.user.role !== 'admin') {
@@ -59,8 +59,8 @@ const updateUser = async (req, res) => {
     }
 
     await promisePool.query(
-      `UPDATE users SET full_name = ?, phone = ?, language_preference = ? WHERE id = ?`,
-      [full_name, phone, language_preference || 'en', id]
+      `UPDATE users SET full_name = ?, phone = ?, billing_address = ?, language_preference = ? WHERE id = ?`,
+      [full_name, phone, billing_address, language_preference || 'en', id]
     );
 
     res.json({

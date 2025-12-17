@@ -40,7 +40,18 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/api/', limiter);
+
+// More lenient rate limiter for demo endpoints
+const demoLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute
+  max: 60, // 60 requests per minute (1 per second)
+  message: 'Too many demo requests, please slow down.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.use('/api/v1/demo', demoLimiter); // Apply lenient limiter to demo routes
+app.use('/api/', limiter); // Apply strict limiter to other routes
 
 // Health check endpoint
 app.get('/health', (req, res) => {
@@ -69,11 +80,19 @@ const adminRoutes = require('./routes/admin.routes');
 
 // Mobile app routes
 const mobileAuthRoutes = require('./routes/mobile-app/auth.routes');
+const mobileUserRoutes = require('./routes/mobile-app/user.routes');
 const mobileSubscriptionRoutes = require('./routes/mobile-app/subscription.routes');
 const mobileAdvertisementRoutes = require('./routes/mobile-app/advertisement.routes');
 const mobileLocationRoutes = require('./routes/mobile-app/location.routes');
 const mobileSettingsRoutes = require('./routes/mobile-app/settings.routes');
 const mobileUploadRoutes = require('./routes/mobile-app/upload.routes');
+const mobileMessagingRoutes = require('./routes/mobile-app/messaging.routes');
+const mobileFavoritesRoutes = require('./routes/mobile-app/favorites.routes');
+const mobileOffersRoutes = require('./routes/mobile-app/offers.routes');
+const mobileDisputeRoutes = require('./routes/mobile-app/dispute.routes');
+const mobileSupportRoutes = require('./routes/mobile-app/support.routes');
+const mobilePaddleRoutes = require('./routes/mobile-app/paddle.routes');
+const demoRoutes = require('./routes/demo.routes');
 
 // Mount routes
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
@@ -90,11 +109,21 @@ app.use(`/api/${API_VERSION}/admin`, adminRoutes);
 
 // Mobile app routes
 app.use(`/api/${API_VERSION}/mobile-app/auth`, mobileAuthRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/user`, mobileUserRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/subscription`, mobileSubscriptionRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/advertisements`, mobileAdvertisementRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/locations`, mobileLocationRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/settings`, mobileSettingsRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/upload`, mobileUploadRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/messaging`, mobileMessagingRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/favorites`, mobileFavoritesRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/offers`, mobileOffersRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/disputes`, mobileDisputeRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/support`, mobileSupportRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/paddle`, mobilePaddleRoutes);
+
+// Demo routes (public, no auth required)
+app.use(`/api/${API_VERSION}/demo`, demoRoutes);
 
 // Serve uploaded files
 app.use('/uploads', express.static('uploads'));

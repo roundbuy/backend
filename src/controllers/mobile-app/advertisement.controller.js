@@ -309,11 +309,13 @@ const updateAdvertisement = async (req, res) => {
 
     const ad = existingAds[0];
 
-    // Only allow editing if status is draft or rejected
-    if (!['draft', 'rejected'].includes(ad.status)) {
+    // Allow editing for draft, rejected, and published ads (for status changes)
+    // Only allow status changes between draft and published
+    const allowedStatuses = ['draft', 'rejected', 'published'];
+    if (!allowedStatuses.includes(ad.status)) {
       return res.status(400).json({
         success: false,
-        message: 'Cannot edit advertisement with current status'
+        message: 'Cannot modify advertisement with current status'
       });
     }
 
@@ -339,45 +341,93 @@ const updateAdvertisement = async (req, res) => {
       endDate.setDate(endDate.getDate() + display_duration_days);
     }
 
+    // Build dynamic update query to allow partial updates
+    const updates = [];
+    const params = [];
+
+    if (title !== undefined) {
+      updates.push('title = ?');
+      params.push(title);
+    }
+    if (description !== undefined) {
+      updates.push('description = ?');
+      params.push(description);
+    }
+    if (images !== undefined) {
+      updates.push('images = ?');
+      params.push(images ? JSON.stringify(images) : null);
+    }
+    if (category_id !== undefined) {
+      updates.push('category_id = ?');
+      params.push(category_id);
+    }
+    if (subcategory_id !== undefined) {
+      updates.push('subcategory_id = ?');
+      params.push(subcategory_id);
+    }
+    if (location_id !== undefined) {
+      updates.push('location_id = ?');
+      params.push(location_id);
+    }
+    if (price !== undefined) {
+      updates.push('price = ?');
+      params.push(price);
+    }
+    if (display_duration_days !== undefined) {
+      updates.push('display_duration_days = ?');
+      params.push(display_duration_days);
+    }
+    if (activity_id !== undefined) {
+      updates.push('activity_id = ?');
+      params.push(activity_id);
+    }
+    if (condition_id !== undefined) {
+      updates.push('condition_id = ?');
+      params.push(condition_id);
+    }
+    if (age_id !== undefined) {
+      updates.push('age_id = ?');
+      params.push(age_id);
+    }
+    if (gender_id !== undefined) {
+      updates.push('gender_id = ?');
+      params.push(gender_id);
+    }
+    if (size_id !== undefined) {
+      updates.push('size_id = ?');
+      params.push(size_id);
+    }
+    if (color_id !== undefined) {
+      updates.push('color_id = ?');
+      params.push(color_id);
+    }
+    if (endDate !== undefined) {
+      updates.push('end_date = ?');
+      params.push(endDate);
+    }
+
+    // Allow status changes between draft and published
+    if (req.body.status) {
+      const newStatus = req.body.status;
+      if ((ad.status === 'draft' && newStatus === 'published') ||
+        (ad.status === 'published' && newStatus === 'draft')) {
+        updates.push('status = ?');
+        params.push(newStatus);
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid fields to update'
+      });
+    }
+
     // Update advertisement
+    params.push(id, userId);
     await promisePool.query(
-      `UPDATE advertisements SET
-        title = COALESCE(?, title),
-        description = COALESCE(?, description),
-        images = COALESCE(?, images),
-        category_id = COALESCE(?, category_id),
-        subcategory_id = ?,
-        location_id = ?,
-        price = COALESCE(?, price),
-        display_duration_days = COALESCE(?, display_duration_days),
-        activity_id = ?,
-        condition_id = ?,
-        age_id = ?,
-        gender_id = ?,
-        size_id = ?,
-        color_id = ?,
-        end_date = ?,
-        updated_at = NOW()
-       WHERE id = ? AND user_id = ?`,
-      [
-        title,
-        description,
-        images ? JSON.stringify(images) : null,
-        category_id,
-        subcategory_id,
-        location_id,
-        price,
-        display_duration_days,
-        activity_id,
-        condition_id,
-        age_id,
-        gender_id,
-        size_id,
-        color_id,
-        endDate,
-        id,
-        userId
-      ]
+      `UPDATE advertisements SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ? AND user_id = ?`,
+      params
     );
 
     // Get updated advertisement
@@ -668,7 +718,7 @@ const browseAdvertisements = async (req, res) => {
       distanceSelect = `, (6371 * acos(cos(radians(?)) * cos(radians(ul.latitude)) *
         cos(radians(ul.longitude) - radians(?)) + sin(radians(?)) *
         sin(radians(ul.latitude)))) AS distance`;
-      
+
       // Add distance to params (will be used later in HAVING clause)
       params.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude));
     }
@@ -857,7 +907,7 @@ const getAdvertisementPublicView = async (req, res) => {
     let isFavorited = false;
     if (userId) {
       const [favorites] = await promisePool.query(
-        'SELECT id FROM favorites WHERE user_id = ? AND product_id = ?',
+        'SELECT id FROM favorites WHERE user_id = ? AND advertisement_id = ?',
         [userId, id]
       );
       isFavorited = favorites.length > 0;

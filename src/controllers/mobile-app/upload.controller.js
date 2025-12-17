@@ -20,24 +20,18 @@ const storage = multer.diskStorage({
   }
 });
 
-// File filter for image types
+// File filter for image types (jpg and png only)
 const fileFilter = (req, file, cb) => {
   const allowedTypes = [
     'image/jpeg',
     'image/jpg',
-    'image/png',
-    'image/gif',
-    'image/bmp',
-    'image/vnd.microsoft.icon', // ico
-    'image/webp',
-    'image/avif',
-    'image/svg+xml'
+    'image/png'
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error(`Invalid file type: ${file.mimetype}. Only image files are allowed.`), false);
+    cb(new Error(`Invalid file type: ${file.mimetype}. Only JPG and PNG images are allowed.`), false);
   }
 };
 
@@ -46,7 +40,7 @@ const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
-    fileSize: 300 * 1024, // 300KB in bytes
+    fileSize: 5 * 1024 * 1024, // 5MB in bytes
     files: 3 // Maximum 3 files
   }
 }).array('images', 3); // Field name 'images', max 3 files
@@ -65,7 +59,7 @@ const uploadImages = async (req, res) => {
           if (err.code === 'LIMIT_FILE_SIZE') {
             return res.status(400).json({
               success: false,
-              message: 'File size too large. Maximum size is 300KB per image.'
+              message: 'File size too large. Maximum size is 5MB per image.'
             });
           }
           if (err.code === 'LIMIT_FILE_COUNT') {
@@ -111,22 +105,27 @@ const uploadImages = async (req, res) => {
 
       // Validate each file size (should be handled by multer, but double-check)
       for (const file of req.files) {
-        if (file.size > 300 * 1024) {
+        if (file.size > 5 * 1024 * 1024) {
           // Clean up all uploaded files
           req.files.forEach(f => {
             fs.unlinkSync(f.path);
           });
           return res.status(400).json({
             success: false,
-            message: `File ${file.originalname} exceeds 300KB limit`
+            message: `File ${file.originalname} exceeds 5MB limit`
           });
         }
       }
 
-      // Generate URLs for uploaded images
+      // Get base URL from request
+      const protocol = req.protocol;
+      const host = req.get('host');
+      const baseUrl = `${protocol}://${host}`;
+
+      // Generate full URLs for uploaded images
       const imageUrls = req.files.map(file => {
-        // Return relative URL that can be accessed via /uploads/ static route
-        return `/uploads/${file.filename}`;
+        // Return full URL that can be accessed directly
+        return `${baseUrl}/uploads/${file.filename}`;
       });
 
       res.status(201).json({
@@ -134,7 +133,14 @@ const uploadImages = async (req, res) => {
         message: `${req.files.length} image(s) uploaded successfully`,
         data: {
           images: imageUrls,
-          count: req.files.length
+          count: req.files.length,
+          files: req.files.map(file => ({
+            filename: file.filename,
+            originalName: file.originalname,
+            size: file.size,
+            mimetype: file.mimetype,
+            url: `${baseUrl}/uploads/${file.filename}`
+          }))
         }
       });
     });
