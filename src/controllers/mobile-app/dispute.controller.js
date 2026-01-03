@@ -269,8 +269,8 @@ class DisputeController {
         });
       }
 
-      const fileType = req.file.mimetype.startsWith('image/') ? 'image' : 
-                      req.file.mimetype === 'application/pdf' ? 'document' : 'other';
+      const fileType = req.file.mimetype.startsWith('image/') ? 'image' :
+        req.file.mimetype === 'application/pdf' ? 'document' : 'other';
 
       const evidence = await disputeService.uploadEvidence(disputeId, userId, {
         file_type: fileType,
@@ -459,6 +459,54 @@ class DisputeController {
       });
     }
   }
+
+  /**
+   * Send seller's response to dispute
+   * POST /api/mobile-app/disputes/:id/seller-response
+   */
+  async sendSellerResponse(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({
+          success: false,
+          errors: errors.array()
+        });
+      }
+
+      const userId = req.user.id;
+      const disputeId = req.params.id;
+      const { response, decision } = req.body;
+
+      if (!response || !decision) {
+        return res.status(400).json({
+          success: false,
+          message: 'Response and decision are required'
+        });
+      }
+
+      if (!['accept', 'decline'].includes(decision)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Decision must be either "accept" or "decline"'
+        });
+      }
+
+      await disputeService.sendSellerResponse(disputeId, userId, response, decision);
+
+      res.json({
+        success: true,
+        message: 'Seller response sent successfully'
+      });
+    } catch (error) {
+      console.error('Send seller response error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error sending seller response',
+        error: error.message
+      });
+    }
+  }
 }
 
 // Create controller instance
@@ -479,5 +527,6 @@ module.exports = {
   updateDisputeStatus: controller.updateDisputeStatus.bind(controller),
   getDisputeStats: controller.getDisputeStats.bind(controller),
   getDisputeCategories: controller.getDisputeCategories.bind(controller),
+  sendSellerResponse: controller.sendSellerResponse.bind(controller),
   uploadMiddleware: upload
 };

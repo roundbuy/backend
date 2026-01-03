@@ -1,11 +1,11 @@
-const pool = require('../config/database');
+const { promisePool } = require('../config/database');
 
 class SupportService {
   /**
    * Generate unique ticket number
    */
   async generateTicketNumber() {
-    const [rows] = await pool.query(
+    const [rows] = await promisePool.query(
       'SELECT COALESCE(MAX(CAST(SUBSTRING(ticket_number, 4) AS UNSIGNED)), 0) + 1 as next_num FROM support_tickets'
     );
     const nextNum = rows[0].next_num;
@@ -16,7 +16,7 @@ class SupportService {
    * Create a new support ticket
    */
   async createTicket(data) {
-    const connection = await pool.getConnection();
+    const connection = await promisePool.getConnection();
     try {
       await connection.beginTransaction();
 
@@ -99,7 +99,7 @@ class SupportService {
       params.push(parseInt(filters.limit));
     }
 
-    const [tickets] = await pool.query(query, params);
+    const [tickets] = await promisePool.query(query, params);
     return tickets;
   }
 
@@ -107,7 +107,7 @@ class SupportService {
    * Get ticket by ID
    */
   async getTicketById(ticketId, userId) {
-    const [tickets] = await pool.query(
+    const [tickets] = await promisePool.query(
       `SELECT 
         st.*,
         a.title as ad_title,
@@ -130,7 +130,7 @@ class SupportService {
    * Get ticket by ticket number
    */
   async getTicketByNumber(ticketNumber, userId) {
-    const [tickets] = await pool.query(
+    const [tickets] = await promisePool.query(
       `SELECT 
         st.*,
         a.title as ad_title,
@@ -153,14 +153,14 @@ class SupportService {
    * Add message to ticket
    */
   async addTicketMessage(ticketId, userId, message) {
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `INSERT INTO support_ticket_messages (ticket_id, user_id, message)
       VALUES (?, ?, ?)`,
       [ticketId, userId, message]
     );
 
     // Update ticket's updated_at and status
-    await pool.query(
+    await promisePool.query(
       `UPDATE support_tickets 
       SET updated_at = NOW(), 
           status = CASE WHEN status = 'awaiting_user' THEN 'in_progress' ELSE status END
@@ -182,7 +182,7 @@ class SupportService {
    */
   async getTicketMessages(ticketId, userId) {
     // Verify user has access to this ticket
-    const [tickets] = await pool.query(
+    const [tickets] = await promisePool.query(
       'SELECT id FROM support_tickets WHERE id = ? AND user_id = ?',
       [ticketId, userId]
     );
@@ -191,10 +191,10 @@ class SupportService {
       throw new Error('Ticket not found or access denied');
     }
 
-    const [messages] = await pool.query(
+    const [messages] = await promisePool.query(
       `SELECT 
         stm.*,
-        u.username,
+        u.full_name,
         u.email
       FROM support_ticket_messages stm
       LEFT JOIN users u ON stm.user_id = u.id
@@ -210,7 +210,7 @@ class SupportService {
    * Upload ticket attachment
    */
   async uploadAttachment(ticketId, messageId, fileData) {
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `INSERT INTO support_ticket_attachments (
         ticket_id, message_id, file_path, file_name, file_type, file_size
       ) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -235,7 +235,7 @@ class SupportService {
    */
   async getTicketAttachments(ticketId, userId) {
     // Verify user has access to this ticket
-    const [tickets] = await pool.query(
+    const [tickets] = await promisePool.query(
       'SELECT id FROM support_tickets WHERE id = ? AND user_id = ?',
       [ticketId, userId]
     );
@@ -244,7 +244,7 @@ class SupportService {
       throw new Error('Ticket not found or access denied');
     }
 
-    const [attachments] = await pool.query(
+    const [attachments] = await promisePool.query(
       `SELECT * FROM support_ticket_attachments 
       WHERE ticket_id = ? 
       ORDER BY uploaded_at DESC`,
@@ -271,7 +271,7 @@ class SupportService {
 
     params.push(ticketId, userId);
 
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `UPDATE support_tickets SET ${updates.join(', ')}, updated_at = NOW()
       WHERE id = ? AND user_id = ?`,
       params
@@ -282,7 +282,7 @@ class SupportService {
     }
 
     // Add system message about status change
-    await pool.query(
+    await promisePool.query(
       `INSERT INTO support_ticket_messages (ticket_id, user_id, message, is_system_message)
       VALUES (?, ?, ?, TRUE)`,
       [ticketId, userId, `Ticket status changed to: ${status}`]
@@ -295,7 +295,7 @@ class SupportService {
    * Get ticket statistics for user
    */
   async getTicketStats(userId) {
-    const [stats] = await pool.query(
+    const [stats] = await promisePool.query(
       `SELECT 
         COUNT(*) as total_tickets,
         SUM(CASE WHEN status = 'open' THEN 1 ELSE 0 END) as open,
@@ -322,7 +322,7 @@ class SupportService {
     const appealDeadline = new Date();
     appealDeadline.setDate(appealDeadline.getDate() + 30); // 30 days to appeal
 
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `INSERT INTO deleted_advertisements (
         original_ad_id, user_id, title, category_id, price,
         original_data, deletion_reason, deletion_reason_details,
@@ -377,7 +377,7 @@ class SupportService {
       params.push(parseInt(filters.limit));
     }
 
-    const [deletedAds] = await pool.query(query, params);
+    const [deletedAds] = await promisePool.query(query, params);
     return deletedAds;
   }
 
@@ -385,7 +385,7 @@ class SupportService {
    * Get deleted ad by ID
    */
   async getDeletedAdById(deletedAdId, userId) {
-    const [ads] = await pool.query(
+    const [ads] = await promisePool.query(
       `SELECT * FROM deleted_advertisements
       WHERE id = ? AND user_id = ?`,
       [deletedAdId, userId]
@@ -402,7 +402,7 @@ class SupportService {
    * Create appeal for deleted ad
    */
   async createAppeal(deletedAdId, userId, appealData) {
-    const connection = await pool.getConnection();
+    const connection = await promisePool.getConnection();
     try {
       await connection.beginTransaction();
 
@@ -478,7 +478,7 @@ class SupportService {
    * Update appeal status
    */
   async updateAppealStatus(deletedAdId, userId, status, reason = null) {
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `UPDATE deleted_advertisements
       SET appeal_status = ?
       WHERE id = ? AND user_id = ?`,
@@ -496,7 +496,7 @@ class SupportService {
    * Get appeal statistics
    */
   async getAppealStats(userId) {
-    const [stats] = await pool.query(
+    const [stats] = await promisePool.query(
       `SELECT 
         COUNT(*) as total_deleted,
         SUM(CASE WHEN can_appeal = TRUE THEN 1 ELSE 0 END) as can_appeal,
@@ -540,7 +540,7 @@ class SupportService {
       params.push(category);
     }
 
-    const [result] = await pool.query(query, params);
+    const [result] = await promisePool.query(query, params);
     return result[0].count > 0;
   }
 }

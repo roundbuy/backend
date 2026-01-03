@@ -6,9 +6,11 @@ const { promisePool } = require('../config/database');
  */
 const authenticate = async (req, res, next) => {
   try {
+    console.log('=== AUTH MIDDLEWARE ===');
     // Get token from header
     const authHeader = req.headers.authorization;
-    
+    console.log('Auth header present:', !!authHeader);
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({
         success: false,
@@ -46,6 +48,7 @@ const authenticate = async (req, res, next) => {
 
     // Attach user to request
     req.user = user;
+    console.log('✅ Auth successful, user:', user.id, user.email);
     next();
   } catch (error) {
     return res.status(401).json({
@@ -84,7 +87,7 @@ const authorize = (...roles) => {
 const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.substring(7);
       const decoded = verifyAccessToken(token);
@@ -98,7 +101,7 @@ const optionalAuth = async (req, res, next) => {
         req.user = users[0];
       }
     }
-    
+
     next();
   } catch (error) {
     // Continue without user authentication

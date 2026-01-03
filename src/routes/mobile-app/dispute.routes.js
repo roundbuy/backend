@@ -178,4 +178,29 @@ router.put(
   disputeController.updateDisputeStatus
 );
 
+/**
+ * @route   POST /api/mobile-app/disputes/:id/seller-response
+ * @desc    Send seller's response to dispute
+ * @access  Private
+ */
+router.post(
+  '/:id/seller-response',
+  [
+    param('id')
+      .isInt()
+      .withMessage('Dispute ID must be a valid integer'),
+    body('response')
+      .notEmpty()
+      .withMessage('Response is required')
+      .isLength({ min: 10, max: 2000 })
+      .withMessage('Response must be between 10 and 2000 characters'),
+    body('decision')
+      .notEmpty()
+      .withMessage('Decision is required')
+      .isIn(['accept', 'decline'])
+      .withMessage('Decision must be either "accept" or "decline"')
+  ],
+  disputeController.sendSellerResponse
+);
+
 module.exports = router;

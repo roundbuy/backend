@@ -1,11 +1,11 @@
-const pool = require('../config/database');
+const { promisePool } = require('../config/database');
 
 class DisputeService {
   /**
    * Generate unique dispute number
    */
   async generateDisputeNumber() {
-    const [rows] = await pool.query(
+    const [rows] = await promisePool.query(
       'SELECT COALESCE(MAX(CAST(SUBSTRING(dispute_number, 5) AS UNSIGNED)), 0) + 1 as next_num FROM disputes'
     );
     const nextNum = rows[0].next_num;
@@ -16,12 +16,12 @@ class DisputeService {
    * Create a new dispute
    */
   async createDispute(data) {
-    const connection = await pool.getConnection();
+    const connection = await promisePool.getConnection();
     try {
       await connection.beginTransaction();
 
       const disputeNumber = await this.generateDisputeNumber();
-      
+
       // Set negotiation deadline (3 days from now)
       const negotiationDeadline = new Date();
       negotiationDeadline.setDate(negotiationDeadline.getDate() + 3);
@@ -77,18 +77,20 @@ class DisputeService {
         d.*,
         a.title as ad_title,
         a.price as ad_price,
-        u.username as user_name,
+        buyer.full_name as user_name,
+        seller.full_name as seller_name,
         COUNT(DISTINCT dm.id) as message_count,
         COUNT(DISTINCT de.id) as evidence_count
       FROM disputes d
       LEFT JOIN advertisements a ON d.advertisement_id = a.id
-      LEFT JOIN users u ON d.user_id = u.id
+      LEFT JOIN users buyer ON d.user_id = buyer.id
+      LEFT JOIN users seller ON d.seller_id = seller.id
       LEFT JOIN dispute_messages dm ON d.id = dm.dispute_id
       LEFT JOIN dispute_evidence de ON d.id = de.dispute_id
-      WHERE d.user_id = ?
+      WHERE (d.user_id = ? OR d.seller_id = ?)
     `;
 
-    const params = [userId];
+    const params = [userId, userId];
 
     if (filters.status) {
       query += ` AND d.status = ?`;
@@ -107,7 +109,7 @@ class DisputeService {
       params.push(parseInt(filters.limit));
     }
 
-    const [disputes] = await pool.query(query, params);
+    const [disputes] = await promisePool.query(query, params);
     return disputes;
   }
 
@@ -115,22 +117,25 @@ class DisputeService {
    * Get dispute by ID
    */
   async getDisputeById(disputeId, userId) {
-    const [disputes] = await pool.query(
+    const [disputes] = await promisePool.query(
       `SELECT 
         d.*,
         a.id as ad_id,
         a.title as ad_title,
         a.description as ad_description,
         a.price as ad_price,
-        a.image_url as ad_image,
-        u.id as user_id,
-        u.username as user_name,
-        u.email as user_email
+        buyer.id as buyer_id,
+        buyer.full_name as user_name,
+        buyer.email as buyer_email,
+        seller.id as seller_id,
+        seller.full_name as seller_name,
+        seller.email as seller_email
       FROM disputes d
       LEFT JOIN advertisements a ON d.advertisement_id = a.id
-      LEFT JOIN users u ON d.user_id = u.id
-      WHERE d.id = ? AND d.user_id = ?`,
-      [disputeId, userId]
+      LEFT JOIN users buyer ON d.user_id = buyer.id
+      LEFT JOIN users seller ON d.seller_id = seller.id
+      WHERE d.id = ? AND (d.user_id = ? OR d.seller_id = ?)`,
+      [disputeId, userId, userId]
     );
 
     if (disputes.length === 0) {
@@ -144,14 +149,13 @@ class DisputeService {
    * Get dispute by dispute number
    */
   async getDisputeByNumber(disputeNumber, userId) {
-    const [disputes] = await pool.query(
+    const [disputes] = await promisePool.query(
       `SELECT 
         d.*,
         a.id as ad_id,
         a.title as ad_title,
         a.description as ad_description,
-        a.price as ad_price,
-        a.image_url as ad_image
+        a.price as ad_price
       FROM disputes d
       LEFT JOIN advertisements a ON d.advertisement_id = a.id
       WHERE d.dispute_number = ? AND d.user_id = ?`,
@@ -169,14 +173,14 @@ class DisputeService {
    * Add message to dispute
    */
   async addDisputeMessage(disputeId, userId, message, messageType = 'text') {
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `INSERT INTO dispute_messages (dispute_id, user_id, message, message_type)
       VALUES (?, ?, ?, ?)`,
       [disputeId, userId, message, messageType]
     );
 
     // Update dispute's updated_at
-    await pool.query(
+    await promisePool.query(
       'UPDATE disputes SET updated_at = NOW() WHERE id = ?',
       [disputeId]
     );
@@ -196,7 +200,7 @@ class DisputeService {
    */
   async getDisputeMessages(disputeId, userId) {
     // Verify user has access to this dispute
-    const [disputes] = await pool.query(
+    const [disputes] = await promisePool.query(
       'SELECT id FROM disputes WHERE id = ? AND user_id = ?',
       [disputeId, userId]
     );
@@ -205,10 +209,10 @@ class DisputeService {
       throw new Error('Dispute not found or access denied');
     }
 
-    const [messages] = await pool.query(
+    const [messages] = await promisePool.query(
       `SELECT 
         dm.*,
-        u.username,
+        u.full_name,
         u.email
       FROM dispute_messages dm
       LEFT JOIN users u ON dm.user_id = u.id
@@ -224,7 +228,7 @@ class DisputeService {
    * Upload dispute evidence
    */
   async uploadEvidence(disputeId, userId, fileData) {
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `INSERT INTO dispute_evidence (
         dispute_id, user_id, file_type, file_path, file_name, file_size, description
       ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -250,7 +254,7 @@ class DisputeService {
    */
   async getDisputeEvidence(disputeId, userId) {
     // Verify user has access to this dispute
-    const [disputes] = await pool.query(
+    const [disputes] = await promisePool.query(
       'SELECT id FROM disputes WHERE id = ? AND user_id = ?',
       [disputeId, userId]
     );
@@ -259,7 +263,7 @@ class DisputeService {
       throw new Error('Dispute not found or access denied');
     }
 
-    const [evidence] = await pool.query(
+    const [evidence] = await promisePool.query(
       `SELECT * FROM dispute_evidence WHERE dispute_id = ? ORDER BY uploaded_at DESC`,
       [disputeId]
     );
@@ -271,7 +275,7 @@ class DisputeService {
    * Check dispute eligibility
    */
   async checkEligibility(disputeId, checks) {
-    const connection = await pool.getConnection();
+    const connection = await promisePool.getConnection();
     try {
       await connection.beginTransaction();
 
@@ -299,7 +303,7 @@ class DisputeService {
    */
   async getEligibilityChecks(disputeId, userId) {
     // Verify user has access to this dispute
-    const [disputes] = await pool.query(
+    const [disputes] = await promisePool.query(
       'SELECT id FROM disputes WHERE id = ? AND user_id = ?',
       [disputeId, userId]
     );
@@ -308,7 +312,7 @@ class DisputeService {
       throw new Error('Dispute not found or access denied');
     }
 
-    const [checks] = await pool.query(
+    const [checks] = await promisePool.query(
       `SELECT * FROM dispute_eligibility_checks WHERE dispute_id = ? ORDER BY checked_at DESC`,
       [disputeId]
     );
@@ -334,7 +338,7 @@ class DisputeService {
 
     params.push(disputeId, userId);
 
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `UPDATE disputes SET ${updates.join(', ')}, updated_at = NOW()
       WHERE id = ? AND user_id = ?`,
       params
@@ -359,7 +363,7 @@ class DisputeService {
    * Create dispute resolution
    */
   async createResolution(disputeId, resolutionData) {
-    const [result] = await pool.query(
+    const [result] = await promisePool.query(
       `INSERT INTO dispute_resolutions (
         dispute_id, resolution_type, resolution_amount, resolution_details, resolved_by
       ) VALUES (?, ?, ?, ?, ?)`,
@@ -373,7 +377,7 @@ class DisputeService {
     );
 
     // Update dispute status to resolved
-    await pool.query(
+    await promisePool.query(
       `UPDATE disputes SET status = 'resolved', closed_at = NOW() WHERE id = ?`,
       [disputeId]
     );
@@ -388,7 +392,7 @@ class DisputeService {
    * Get dispute statistics for user
    */
   async getDisputeStats(userId) {
-    const [stats] = await pool.query(
+    const [stats] = await promisePool.query(
       `SELECT 
         COUNT(*) as total_disputes,
         SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
@@ -409,7 +413,7 @@ class DisputeService {
    */
   async canCreateDispute(userId, advertisementId) {
     // Check if there's already an open dispute for this ad by this user
-    const [existing] = await pool.query(
+    const [existing] = await promisePool.query(
       `SELECT id FROM disputes 
       WHERE user_id = ? AND advertisement_id = ? 
       AND status NOT IN ('closed', 'resolved')`,
@@ -455,6 +459,51 @@ class DisputeService {
         'Other'
       ]
     };
+  }
+
+  /**
+   * Send seller's response to dispute
+   */
+  async sendSellerResponse(disputeId, userId, response, decision) {
+    // First verify the user is the seller
+    const [dispute] = await promisePool.query(
+      'SELECT seller_id, user_id FROM disputes WHERE id = ?',
+      [disputeId]
+    );
+
+    if (dispute.length === 0) {
+      throw new Error('Dispute not found');
+    }
+
+    // Check if user is the seller
+    if (dispute[0].seller_id !== userId) {
+      throw new Error('Only the seller can respond to this dispute');
+    }
+
+    // Update dispute with seller's response
+    const [result] = await promisePool.query(
+      `UPDATE disputes 
+       SET seller_response = ?, 
+           seller_decision = ?, 
+           status = 'awaiting_response',
+           updated_at = NOW()
+       WHERE id = ?`,
+      [response, decision, disputeId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new Error('Failed to update dispute');
+    }
+
+    // Add system message about seller response
+    await this.addDisputeMessage(
+      disputeId,
+      userId,
+      `Seller has responded to the dispute with decision: ${decision}`,
+      'status_update'
+    );
+
+    return true;
   }
 }
 

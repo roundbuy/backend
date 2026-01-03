@@ -90,9 +90,19 @@ const mobileMessagingRoutes = require('./routes/mobile-app/messaging.routes');
 const mobileFavoritesRoutes = require('./routes/mobile-app/favorites.routes');
 const mobileOffersRoutes = require('./routes/mobile-app/offers.routes');
 const mobileDisputeRoutes = require('./routes/mobile-app/dispute.routes');
+const mobileIssueRoutes = require('./routes/mobile-app/issue.routes');
+const mobileClaimRoutes = require('./routes/mobile-app/claim.routes');
 const mobileSupportRoutes = require('./routes/mobile-app/support.routes');
+const mobileSupportResolutionRoutes = require('./routes/mobile-app/supportResolutionRoutes');
 const mobilePaddleRoutes = require('./routes/mobile-app/paddle.routes');
 const demoRoutes = require('./routes/demo.routes');
+
+// Admin routes
+const adminResolutionRoutes = require('./routes/admin/resolution.admin.routes');
+const adminNotificationRoutes = require('./routes/admin/notificationRoutes');
+
+// Mobile notification routes
+const mobileNotificationRoutes = require('./routes/mobile-app/notificationRoutes');
 
 // Mount routes
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
@@ -119,8 +129,19 @@ app.use(`/api/${API_VERSION}/mobile-app/messaging`, mobileMessagingRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/favorites`, mobileFavoritesRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/offers`, mobileOffersRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/disputes`, mobileDisputeRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/issues`, mobileIssueRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/claims`, mobileClaimRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/support`, mobileSupportRoutes);
+app.use(`/api/${API_VERSION}/mobile-app`, mobileSupportResolutionRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/paddle`, mobilePaddleRoutes);
+
+
+// Admin routes
+app.use(`/api/${API_VERSION}/admin/resolution`, adminResolutionRoutes);
+app.use(`/api/${API_VERSION}/admin/notifications`, adminNotificationRoutes);
+
+// Mobile notification routes
+app.use(`/api/${API_VERSION}/mobile/notifications`, mobileNotificationRoutes);
 
 // Demo routes (public, no auth required)
 app.use(`/api/${API_VERSION}/demo`, demoRoutes);
