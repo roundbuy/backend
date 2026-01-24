@@ -23,7 +23,7 @@ const optionalAuth = (req, res, next) => {
     }
 
     // Token exists, try to authenticate
-    authenticateToken(req, res, next);
+    authenticate(req, res, next);
 };
 
 /**

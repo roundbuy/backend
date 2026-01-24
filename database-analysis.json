@@ -1,0 +1,7431 @@
+{
+  "database": "roundbuy_db",
+  "totalTables": 48,
+  "analyzedAt": "2026-01-04T20:54:11.916Z",
+  "tables": {
+    "admin_activity_logs": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "bigint(20)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "admin_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "action",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "user_banned, ad_approved, settings_updated, etc."
+        },
+        {
+          "name": "entity_type",
+          "type": "varchar(50)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": "user, advertisement, banner, etc."
+        },
+        {
+          "name": "entity_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "old_value",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "new_value",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "ip_address",
+          "type": "varchar(45)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "MUL",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "admin_id",
+          "references": "users.id",
+          "constraint": "admin_activity_logs_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_action": {
+          "columns": [
+            "action"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_admin_id": {
+          "columns": [
+            "admin_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_created_at": {
+          "columns": [
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_entity_type": {
+          "columns": [
+            "entity_type"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "advertisements": {
+      "rowCount": 3,
+      "estimatedRows": 3,
+      "sizeInMB": "0.25",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "advertisement_plan_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "title",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "images",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Array of image URLs"
+        },
+        {
+          "name": "category_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "subcategory_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "location_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Reference to user_locations table"
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "display_duration_days",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "60",
+          "extra": "",
+          "comment": "60 days or continue (NULL for continue)"
+        },
+        {
+          "name": "activity_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "condition_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "age_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "gender_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "size_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "color_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('draft','pending','approved','published','expired','rejected','sold')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'draft'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "views_count",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "featured",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "start_date",
+          "type": "datetime",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "end_date",
+          "type": "datetime",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "rejection_reason",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "metadata",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Additional product-specific fields"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "advertisements_ibfk_1"
+        },
+        {
+          "column": "size_id",
+          "references": "ad_sizes.id",
+          "constraint": "advertisements_ibfk_10"
+        },
+        {
+          "column": "color_id",
+          "references": "ad_colors.id",
+          "constraint": "advertisements_ibfk_11"
+        },
+        {
+          "column": "category_id",
+          "references": "categories.id",
+          "constraint": "advertisements_ibfk_2"
+        },
+        {
+          "column": "subcategory_id",
+          "references": "categories.id",
+          "constraint": "advertisements_ibfk_3"
+        },
+        {
+          "column": "location_id",
+          "references": "user_locations.id",
+          "constraint": "advertisements_ibfk_4"
+        },
+        {
+          "column": "advertisement_plan_id",
+          "references": "advertisement_plans.id",
+          "constraint": "advertisements_ibfk_5"
+        },
+        {
+          "column": "activity_id",
+          "references": "ad_activities.id",
+          "constraint": "advertisements_ibfk_6"
+        },
+        {
+          "column": "condition_id",
+          "references": "ad_conditions.id",
+          "constraint": "advertisements_ibfk_7"
+        },
+        {
+          "column": "age_id",
+          "references": "ad_ages.id",
+          "constraint": "advertisements_ibfk_8"
+        },
+        {
+          "column": "gender_id",
+          "references": "ad_genders.id",
+          "constraint": "advertisements_ibfk_9"
+        }
+      ],
+      "indexes": {
+        "advertisement_plan_id": {
+          "columns": [
+            "advertisement_plan_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_activity_id": {
+          "columns": [
+            "activity_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_age_id": {
+          "columns": [
+            "age_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_category_id": {
+          "columns": [
+            "category_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_color_id": {
+          "columns": [
+            "color_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_condition_id": {
+          "columns": [
+            "condition_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_end_date": {
+          "columns": [
+            "end_date"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_featured": {
+          "columns": [
+            "featured"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_gender_id": {
+          "columns": [
+            "gender_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_location_id": {
+          "columns": [
+            "location_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_size_id": {
+          "columns": [
+            "size_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_status": {
+          "columns": [
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_subcategory_id": {
+          "columns": [
+            "subcategory_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_title_description": {
+          "columns": [
+            "title",
+            "description"
+          ],
+          "unique": false,
+          "type": "FULLTEXT"
+        },
+        "idx_user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "advertisements_demo": {
+      "rowCount": 69,
+      "estimatedRows": 69,
+      "sizeInMB": "0.14",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "title",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "category_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "subcategory_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "activity_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "condition_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "location_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "latitude",
+          "type": "decimal(10,8)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "longitude",
+          "type": "decimal(11,8)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "city",
+          "type": "varchar(100)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "state",
+          "type": "varchar(100)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "country",
+          "type": "varchar(100)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "location_name",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "images",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('active','sold','inactive')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'active'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "views",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "MUL",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_demo_category": {
+          "columns": [
+            "category_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_demo_created": {
+          "columns": [
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_demo_location": {
+          "columns": [
+            "latitude",
+            "longitude"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_demo_status": {
+          "columns": [
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "advertisement_plans": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "duration_days",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "30",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "allowed_for_subscription_ids",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Array of subscription plan IDs that can use this plan"
+        },
+        {
+          "name": "features",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "{\"priority_listing\": true, \"top_search\": false, \"homepage_featured\": false}"
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "ad_activities": {
+      "rowCount": 6,
+      "estimatedRows": 6,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sort_order",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": [
+        {
+          "id": 1,
+          "name": "Buy",
+          "slug": "buy",
+          "is_active": 1,
+          "sort_order": 1,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        },
+        {
+          "id": 2,
+          "name": "Sell",
+          "slug": "sell",
+          "is_active": 1,
+          "sort_order": 2,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        },
+        {
+          "id": 3,
+          "name": "Rent",
+          "slug": "rent",
+          "is_active": 1,
+          "sort_order": 3,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        }
+      ]
+    },
+    "ad_ages": {
+      "rowCount": 3,
+      "estimatedRows": 3,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sort_order",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "ad_colors": {
+      "rowCount": 10,
+      "estimatedRows": 10,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "hex_code",
+          "type": "varchar(7)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Hex color code (e.g., #FF0000)"
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sort_order",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "ad_conditions": {
+      "rowCount": 5,
+      "estimatedRows": 5,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sort_order",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": [
+        {
+          "id": 1,
+          "name": "All",
+          "slug": "all",
+          "is_active": 1,
+          "sort_order": 1,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        },
+        {
+          "id": 2,
+          "name": "New",
+          "slug": "new",
+          "is_active": 1,
+          "sort_order": 2,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        },
+        {
+          "id": 3,
+          "name": "Excellent",
+          "slug": "excellent",
+          "is_active": 1,
+          "sort_order": 3,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        }
+      ]
+    },
+    "ad_genders": {
+      "rowCount": 3,
+      "estimatedRows": 3,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sort_order",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "ad_sizes": {
+      "rowCount": 7,
+      "estimatedRows": 6,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sort_order",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "categories": {
+      "rowCount": 8,
+      "estimatedRows": 8,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "parent_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "icon",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sort_order",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "parent_id",
+          "references": "categories.id",
+          "constraint": "categories_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_parent_id": {
+          "columns": [
+            "parent_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": [
+        {
+          "id": 1,
+          "name": "Electronics",
+          "slug": "electronics",
+          "parent_id": null,
+          "icon": null,
+          "description": "Electronic devices and accessories",
+          "is_active": 1,
+          "sort_order": 1,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        },
+        {
+          "id": 2,
+          "name": "Fashion",
+          "slug": "fashion",
+          "parent_id": null,
+          "icon": null,
+          "description": "Clothing, shoes, and accessories",
+          "is_active": 1,
+          "sort_order": 2,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        },
+        {
+          "id": 3,
+          "name": "Home & Garden",
+          "slug": "home-garden",
+          "parent_id": null,
+          "icon": null,
+          "description": "Furniture, appliances, and decor",
+          "is_active": 1,
+          "sort_order": 3,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        }
+      ]
+    },
+    "claims": {
+      "rowCount": 1,
+      "estimatedRows": 0,
+      "sizeInMB": "0.13",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "claim_number",
+          "type": "varchar(20)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "dispute_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "Claimant (buyer)"
+        },
+        {
+          "name": "seller_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "Respondent (seller)"
+        },
+        {
+          "name": "advertisement_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "claim_reason",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "Why escalating to claim"
+        },
+        {
+          "name": "buyer_additional_evidence",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Additional evidence from buyer"
+        },
+        {
+          "name": "seller_response",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Seller response to claim"
+        },
+        {
+          "name": "admin_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Assigned admin"
+        },
+        {
+          "name": "admin_decision",
+          "type": "enum('favor_buyer','favor_seller','partial')",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "admin_notes",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Admin reasoning"
+        },
+        {
+          "name": "resolution_amount",
+          "type": "decimal(10,2)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Refund amount"
+        },
+        {
+          "name": "status",
+          "type": "enum('pending','under_review','resolved','closed')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'pending'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "priority",
+          "type": "enum('low','medium','high','urgent')",
+          "nullable": true,
+          "key": "",
+          "default": "'medium'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "assigned_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "resolved_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "closed_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "dispute_id",
+          "references": "disputes.id",
+          "constraint": "claims_ibfk_1"
+        },
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "claims_ibfk_2"
+        },
+        {
+          "column": "seller_id",
+          "references": "users.id",
+          "constraint": "claims_ibfk_3"
+        },
+        {
+          "column": "admin_id",
+          "references": "users.id",
+          "constraint": "claims_ibfk_4"
+        }
+      ],
+      "indexes": {
+        "claim_number": {
+          "columns": [
+            "claim_number"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "dispute_id": {
+          "columns": [
+            "dispute_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_claim_admin": {
+          "columns": [
+            "admin_id",
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_claim_number": {
+          "columns": [
+            "claim_number"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_claim_status": {
+          "columns": [
+            "status",
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "seller_id": {
+          "columns": [
+            "seller_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "claim_evidence": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "claim_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_type",
+          "type": "enum('image','document','video','other')",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_path",
+          "type": "varchar(500)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_size",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "uploaded_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "claim_id",
+          "references": "claims.id",
+          "constraint": "claim_evidence_ibfk_1"
+        },
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "claim_evidence_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_claim_evidence": {
+          "columns": [
+            "claim_id",
+            "uploaded_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "claim_messages": {
+      "rowCount": 1,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "claim_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_admin_message",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_system_message",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message_type",
+          "type": "enum('text','status_update','admin_decision','resolution')",
+          "nullable": true,
+          "key": "",
+          "default": "'text'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "claim_id",
+          "references": "claims.id",
+          "constraint": "claim_messages_ibfk_1"
+        },
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "claim_messages_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_claim_messages": {
+          "columns": [
+            "claim_id",
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "conversations": {
+      "rowCount": 1,
+      "estimatedRows": 0,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "advertisement_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "buyer_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "last_message_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "advertisement_id",
+          "references": "advertisements.id",
+          "constraint": "conversations_ibfk_1"
+        },
+        {
+          "column": "buyer_id",
+          "references": "users.id",
+          "constraint": "conversations_ibfk_2"
+        },
+        {
+          "column": "seller_id",
+          "references": "users.id",
+          "constraint": "conversations_ibfk_3"
+        }
+      ],
+      "indexes": {
+        "buyer_id": {
+          "columns": [
+            "buyer_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "seller_id": {
+          "columns": [
+            "seller_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "unique_conversation": {
+          "columns": [
+            "advertisement_id",
+            "buyer_id",
+            "seller_id"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "countries": {
+      "rowCount": 1,
+      "estimatedRows": 0,
+      "sizeInMB": "0.11",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "code",
+          "type": "varchar(3)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "ISO country code (IND, USA, GBR)"
+        },
+        {
+          "name": "iso_code",
+          "type": "varchar(2)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "ISO 3166-1 alpha-2 code"
+        },
+        {
+          "name": "phone_code",
+          "type": "varchar(10)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Country calling code (+91, +1, +44)"
+        },
+        {
+          "name": "currency_code",
+          "type": "varchar(3)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Default currency for country"
+        },
+        {
+          "name": "flag_emoji",
+          "type": "varchar(10)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Country flag emoji ??"
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_default",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "code": {
+          "columns": [
+            "code"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "idx_code": {
+          "columns": [
+            "code"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_iso_code": {
+          "columns": [
+            "iso_code"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_default": {
+          "columns": [
+            "is_default"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "iso_code": {
+          "columns": [
+            "iso_code"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": [
+        {
+          "id": 1,
+          "name": "Finland",
+          "code": "",
+          "iso_code": "",
+          "phone_code": "",
+          "currency_code": "",
+          "flag_emoji": "",
+          "is_active": 1,
+          "is_default": 0,
+          "created_at": "2025-12-03T11:01:38.000Z",
+          "updated_at": "2025-12-03T11:01:38.000Z"
+        }
+      ]
+    },
+    "currencies": {
+      "rowCount": 4,
+      "estimatedRows": 4,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "code",
+          "type": "varchar(3)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": "ISO currency code (USD, EUR, INR)"
+        },
+        {
+          "name": "name",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "symbol",
+          "type": "varchar(10)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_default",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "exchange_rate",
+          "type": "decimal(10,6)",
+          "nullable": true,
+          "key": "",
+          "default": "1.000000",
+          "extra": "",
+          "comment": "Exchange rate to default currency"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "code": {
+          "columns": [
+            "code"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "idx_code": {
+          "columns": [
+            "code"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_default": {
+          "columns": [
+            "is_default"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": [
+        {
+          "id": 1,
+          "code": "USD",
+          "name": "US Dollar",
+          "symbol": "$",
+          "is_active": 1,
+          "is_default": 0,
+          "exchange_rate": "1.000000",
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        },
+        {
+          "id": 2,
+          "code": "EUR",
+          "name": "Euro",
+          "symbol": "€",
+          "is_active": 1,
+          "is_default": 0,
+          "exchange_rate": "0.850000",
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        },
+        {
+          "id": 3,
+          "code": "INR",
+          "name": "Indian Rupee",
+          "symbol": "₹",
+          "is_active": 1,
+          "is_default": 1,
+          "exchange_rate": "83.000000",
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-11-28T13:04:14.000Z"
+        }
+      ]
+    },
+    "deleted_advertisements": {
+      "rowCount": 4,
+      "estimatedRows": 4,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "original_ad_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "title",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "category_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "deletion_reason",
+          "type": "enum('user_request','policy_violation','expired','sold','admin_action')",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "deletion_reason_details",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "deleted_by",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "deleted_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "can_appeal",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "appeal_status",
+          "type": "varchar(20)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "appeal_deadline",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "deleted_advertisements_ibfk_1"
+        },
+        {
+          "column": "deleted_by",
+          "references": "users.id",
+          "constraint": "deleted_advertisements_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "deleted_by": {
+          "columns": [
+            "deleted_by"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_original_ad": {
+          "columns": [
+            "original_ad_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_deleted_ads": {
+          "columns": [
+            "user_id",
+            "deleted_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "disputes": {
+      "rowCount": 2,
+      "estimatedRows": 2,
+      "sizeInMB": "0.20",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "escalated_from_issue_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "dispute_number",
+          "type": "varchar(20)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "type",
+          "type": "varchar(20)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "advertisement_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "issue_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "dispute_type",
+          "type": "enum('buyer_initiated','seller_initiated','transaction_dispute','exchange','issue')",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "dispute_category",
+          "type": "varchar(100)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "problem_description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('pending','under_review','awaiting_response','resolved','closed','escalated')",
+          "nullable": true,
+          "key": "",
+          "default": "'pending'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "resolution_status",
+          "type": "enum('accepted','rejected','in_negotiation','ended')",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "current_phase",
+          "type": "enum('issue','dispute','claim','resolution','ended')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'dispute'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "priority",
+          "type": "enum('low','medium','high','urgent')",
+          "nullable": true,
+          "key": "",
+          "default": "'medium'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        },
+        {
+          "name": "closed_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "dispute_deadline",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "claim_deadline",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "resolution_deadline",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "buyer_demand",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_response",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_decision",
+          "type": "enum('accept','decline')",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "disputes_ibfk_1"
+        },
+        {
+          "column": "advertisement_id",
+          "references": "advertisements.id",
+          "constraint": "disputes_ibfk_2"
+        },
+        {
+          "column": "escalated_from_issue_id",
+          "references": "issues.id",
+          "constraint": "disputes_ibfk_3"
+        },
+        {
+          "column": "issue_id",
+          "references": "issues.id",
+          "constraint": "fk_disputes_issue"
+        }
+      ],
+      "indexes": {
+        "dispute_number": {
+          "columns": [
+            "dispute_number"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "escalated_from_issue_id": {
+          "columns": [
+            "escalated_from_issue_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "fk_disputes_issue": {
+          "columns": [
+            "issue_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_ad_disputes": {
+          "columns": [
+            "advertisement_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_claim_deadline": {
+          "columns": [
+            "claim_deadline"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_current_phase": {
+          "columns": [
+            "current_phase"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_dispute_deadline": {
+          "columns": [
+            "dispute_deadline"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_dispute_number": {
+          "columns": [
+            "dispute_number"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_resolution_deadline": {
+          "columns": [
+            "resolution_deadline"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_seller_disputes": {
+          "columns": [
+            "seller_id",
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_disputes": {
+          "columns": [
+            "user_id",
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "dispute_claims": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.13",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "dispute_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_by",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "claim_description",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "claim_deadline",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "MUL",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        },
+        {
+          "name": "buyer_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "buyer_answered",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_answered",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "buyer_answer",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_answer",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "buyer_answer_submitted_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_answer_submitted_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "buyer_evidence",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_evidence",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "winner_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('pending','answered','resolved','expired')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'pending'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "resolved_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "dispute_id",
+          "references": "disputes.id",
+          "constraint": "dispute_claims_ibfk_1"
+        },
+        {
+          "column": "created_by",
+          "references": "users.id",
+          "constraint": "dispute_claims_ibfk_2"
+        },
+        {
+          "column": "buyer_id",
+          "references": "users.id",
+          "constraint": "dispute_claims_ibfk_3"
+        },
+        {
+          "column": "seller_id",
+          "references": "users.id",
+          "constraint": "dispute_claims_ibfk_4"
+        },
+        {
+          "column": "winner_id",
+          "references": "users.id",
+          "constraint": "dispute_claims_ibfk_5"
+        }
+      ],
+      "indexes": {
+        "buyer_id": {
+          "columns": [
+            "buyer_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "created_by": {
+          "columns": [
+            "created_by"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_claim_deadline": {
+          "columns": [
+            "claim_deadline"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_dispute_claim": {
+          "columns": [
+            "dispute_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_status": {
+          "columns": [
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "seller_id": {
+          "columns": [
+            "seller_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "winner_id": {
+          "columns": [
+            "winner_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "dispute_eligibility_checks": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.03",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "dispute_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "check_name",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_eligible",
+          "type": "tinyint(1)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "reason",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "checked_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "dispute_id",
+          "references": "disputes.id",
+          "constraint": "dispute_eligibility_checks_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_dispute_eligibility": {
+          "columns": [
+            "dispute_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "dispute_evidence": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "dispute_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_type",
+          "type": "enum('image','document','video')",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_path",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "uploaded_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "dispute_id",
+          "references": "disputes.id",
+          "constraint": "dispute_evidence_ibfk_1"
+        },
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "dispute_evidence_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_dispute_evidence": {
+          "columns": [
+            "dispute_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "dispute_messages": {
+      "rowCount": 2,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "dispute_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_admin_message",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_system_message",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message_type",
+          "type": "enum('text','status_update','resolution_offer','counteroffer')",
+          "nullable": true,
+          "key": "",
+          "default": "'text'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "dispute_id",
+          "references": "disputes.id",
+          "constraint": "dispute_messages_ibfk_1"
+        },
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "dispute_messages_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_dispute_messages": {
+          "columns": [
+            "dispute_id",
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "favorites": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "advertisement_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "favorites_ibfk_1"
+        },
+        {
+          "column": "advertisement_id",
+          "references": "advertisements.id",
+          "constraint": "favorites_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_advertisement_id": {
+          "columns": [
+            "advertisement_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_ad": {
+          "columns": [
+            "user_id",
+            "advertisement_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "unique_user_advertisement": {
+          "columns": [
+            "user_id",
+            "advertisement_id"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "issues": {
+      "rowCount": 3,
+      "estimatedRows": 3,
+      "sizeInMB": "0.09",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "issue_number",
+          "type": "varchar(20)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "advertisement_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "product_name",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_by",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "Buyer ID"
+        },
+        {
+          "name": "other_party_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "Seller ID"
+        },
+        {
+          "name": "issue_type",
+          "type": "enum('quality','delivery','description_mismatch','price','exchange','other')",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "issue_description",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "buyer_request",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "What buyer wants"
+        },
+        {
+          "name": "seller_response_text",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Seller response message"
+        },
+        {
+          "name": "seller_decision",
+          "type": "enum('accept','decline','pending')",
+          "nullable": true,
+          "key": "",
+          "default": "'pending'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('open','seller_responded','closed_by_buyer','settled','escalated_to_dispute')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'open'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "deadline",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "3 days from creation"
+        },
+        {
+          "name": "responded_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "closed_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_issue_ad": {
+          "columns": [
+            "advertisement_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_issue_number": {
+          "columns": [
+            "issue_number"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_issue_parties": {
+          "columns": [
+            "created_by",
+            "other_party_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_issue_status": {
+          "columns": [
+            "status",
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "issue_number": {
+          "columns": [
+            "issue_number"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "issue_evidence": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "issue_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "uploaded_by",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_path",
+          "type": "varchar(500)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_type",
+          "type": "enum('pdf','image')",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_size",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "Size in bytes"
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "issue_id",
+          "references": "issues.id",
+          "constraint": "issue_evidence_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_evidence_uploader": {
+          "columns": [
+            "uploaded_by"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_issue_evidence": {
+          "columns": [
+            "issue_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "issue_messages": {
+      "rowCount": 9,
+      "estimatedRows": 8,
+      "sizeInMB": "0.03",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "issue_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sender_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_system_message",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "issue_id",
+          "references": "issues.id",
+          "constraint": "issue_messages_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_issue_messages": {
+          "columns": [
+            "issue_id",
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "languages": {
+      "rowCount": 4,
+      "estimatedRows": 4,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "code",
+          "type": "varchar(5)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_default",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "flag_icon",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "code": {
+          "columns": [
+            "code"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "idx_code": {
+          "columns": [
+            "code"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": [
+        {
+          "id": 1,
+          "name": "English",
+          "code": "en",
+          "is_active": 1,
+          "is_default": 1,
+          "flag_icon": null,
+          "created_at": "2025-12-04T12:30:23.000Z",
+          "updated_at": "2025-12-04T12:30:23.000Z"
+        },
+        {
+          "id": 2,
+          "name": "Hindi",
+          "code": "hi",
+          "is_active": 1,
+          "is_default": 0,
+          "flag_icon": null,
+          "created_at": "2025-12-04T12:30:23.000Z",
+          "updated_at": "2025-12-04T12:30:23.000Z"
+        },
+        {
+          "id": 3,
+          "name": "Spanish",
+          "code": "es",
+          "is_active": 1,
+          "is_default": 0,
+          "flag_icon": null,
+          "created_at": "2025-12-04T12:30:23.000Z",
+          "updated_at": "2025-12-04T12:30:23.000Z"
+        }
+      ]
+    },
+    "messages": {
+      "rowCount": 22,
+      "estimatedRows": 20,
+      "sizeInMB": "0.14",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "sender_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "receiver_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "product_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_read",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "MUL",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "advertisement_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "conversation_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "sender_id",
+          "references": "users.id",
+          "constraint": "messages_ibfk_1"
+        },
+        {
+          "column": "receiver_id",
+          "references": "users.id",
+          "constraint": "messages_ibfk_2"
+        },
+        {
+          "column": "product_id",
+          "references": "products.id",
+          "constraint": "messages_ibfk_3"
+        },
+        {
+          "column": "advertisement_id",
+          "references": "advertisements.id",
+          "constraint": "messages_ibfk_4"
+        },
+        {
+          "column": "advertisement_id",
+          "references": "advertisements.id",
+          "constraint": "messages_ibfk_5"
+        },
+        {
+          "column": "conversation_id",
+          "references": "conversations.id",
+          "constraint": "messages_ibfk_6"
+        }
+      ],
+      "indexes": {
+        "advertisement_id": {
+          "columns": [
+            "advertisement_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_conversation_id": {
+          "columns": [
+            "conversation_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_created_at": {
+          "columns": [
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_read": {
+          "columns": [
+            "is_read"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_product_id": {
+          "columns": [
+            "product_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_receiver_id": {
+          "columns": [
+            "receiver_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_sender_id": {
+          "columns": [
+            "sender_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_sender_receiver": {
+          "columns": [
+            "sender_id",
+            "receiver_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "notifications": {
+      "rowCount": 1,
+      "estimatedRows": 1,
+      "sizeInMB": "0.16",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "title",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "Notification title"
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "Notification message body"
+        },
+        {
+          "name": "type",
+          "type": "enum('push','popup','fullscreen')",
+          "nullable": false,
+          "key": "MUL",
+          "default": "'push'",
+          "extra": "",
+          "comment": "Notification display type"
+        },
+        {
+          "name": "priority",
+          "type": "enum('low','medium','high')",
+          "nullable": false,
+          "key": "MUL",
+          "default": "'medium'",
+          "extra": "",
+          "comment": "Notification priority level"
+        },
+        {
+          "name": "target_audience",
+          "type": "enum('all','all_users','all_guests','specific_users','condition')",
+          "nullable": false,
+          "key": "MUL",
+          "default": "'all'",
+          "extra": "",
+          "comment": "Target audience type"
+        },
+        {
+          "name": "target_user_ids",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Array of user IDs if target_audience is specific_users"
+        },
+        {
+          "name": "target_conditions",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Conditions: {subscription_plan: [1,2], country: [\"IND\"], is_verified: true}"
+        },
+        {
+          "name": "image_url",
+          "type": "varchar(500)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Optional notification image URL"
+        },
+        {
+          "name": "action_type",
+          "type": "enum('none','open_url','open_screen','custom')",
+          "nullable": true,
+          "key": "",
+          "default": "'none'",
+          "extra": "",
+          "comment": "Action when clicked"
+        },
+        {
+          "name": "action_data",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Additional data for action"
+        },
+        {
+          "name": "scheduled_at",
+          "type": "datetime",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": "When to send (NULL for immediate)"
+        },
+        {
+          "name": "sent_at",
+          "type": "datetime",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": "When actually sent"
+        },
+        {
+          "name": "expires_at",
+          "type": "datetime",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": "When notification expires"
+        },
+        {
+          "name": "created_by",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "Admin user ID"
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": "Soft delete flag"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "MUL",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "created_by",
+          "references": "users.id",
+          "constraint": "notifications_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "created_by": {
+          "columns": [
+            "created_by"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_created_at": {
+          "columns": [
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_expires_at": {
+          "columns": [
+            "expires_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_priority": {
+          "columns": [
+            "priority"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_scheduled_at": {
+          "columns": [
+            "scheduled_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_sent_at": {
+          "columns": [
+            "sent_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_target_audience": {
+          "columns": [
+            "target_audience"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_type": {
+          "columns": [
+            "type"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "notification_heartbeat_log": {
+      "rowCount": 1,
+      "estimatedRows": 0,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "device_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "last_check_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "MUL",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "notification_heartbeat_log_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_device_id": {
+          "columns": [
+            "device_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_last_check_at": {
+          "columns": [
+            "last_check_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "unique_user_device": {
+          "columns": [
+            "user_id",
+            "device_id"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "offers": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "conversation_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sender_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "offered_price",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('pending','accepted','rejected','counter_offered')",
+          "nullable": true,
+          "key": "",
+          "default": "'pending'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "conversation_id",
+          "references": "conversations.id",
+          "constraint": "offers_ibfk_1"
+        },
+        {
+          "column": "sender_id",
+          "references": "users.id",
+          "constraint": "offers_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "conversation_id": {
+          "columns": [
+            "conversation_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "sender_id": {
+          "columns": [
+            "sender_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "orders": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "buyer_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "seller_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "product_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "amount",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('pending','confirmed','shipped','delivered','completed','cancelled','refunded')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'pending'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "payment_status",
+          "type": "enum('pending','completed','failed','refunded')",
+          "nullable": true,
+          "key": "",
+          "default": "'pending'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "payment_method",
+          "type": "varchar(50)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "payment_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "shipping_address",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "tracking_number",
+          "type": "varchar(100)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "notes",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "buyer_id",
+          "references": "users.id",
+          "constraint": "orders_ibfk_1"
+        },
+        {
+          "column": "seller_id",
+          "references": "users.id",
+          "constraint": "orders_ibfk_2"
+        },
+        {
+          "column": "product_id",
+          "references": "products.id",
+          "constraint": "orders_ibfk_3"
+        }
+      ],
+      "indexes": {
+        "idx_buyer_id": {
+          "columns": [
+            "buyer_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_seller_id": {
+          "columns": [
+            "seller_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_status": {
+          "columns": [
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "product_id": {
+          "columns": [
+            "product_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "order_items": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "order_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "product_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "quantity",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "order_id",
+          "references": "orders.id",
+          "constraint": "order_items_ibfk_1"
+        },
+        {
+          "column": "product_id",
+          "references": "products.id",
+          "constraint": "order_items_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_order_id": {
+          "columns": [
+            "order_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "product_id": {
+          "columns": [
+            "product_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "plan_prices": {
+      "rowCount": 16,
+      "estimatedRows": 16,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "subscription_plan_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "currency_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "tax_rate",
+          "type": "decimal(5,2)",
+          "nullable": true,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": "Tax rate as percentage"
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "subscription_plan_id",
+          "references": "subscription_plans.id",
+          "constraint": "plan_prices_ibfk_1"
+        },
+        {
+          "column": "currency_id",
+          "references": "currencies.id",
+          "constraint": "plan_prices_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_currency_id": {
+          "columns": [
+            "currency_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_subscription_plan_id": {
+          "columns": [
+            "subscription_plan_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "unique_plan_currency": {
+          "columns": [
+            "subscription_plan_id",
+            "currency_id"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "products": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.09",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "seller_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "title",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "category_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "condition_type",
+          "type": "enum('new','like_new','good','fair','poor')",
+          "nullable": true,
+          "key": "",
+          "default": "'good'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "images",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Array of image URLs"
+        },
+        {
+          "name": "location",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('available','sold','reserved','inactive')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'available'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "views_count",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "seller_id",
+          "references": "users.id",
+          "constraint": "products_ibfk_1"
+        },
+        {
+          "column": "category_id",
+          "references": "categories.id",
+          "constraint": "products_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_category_id": {
+          "columns": [
+            "category_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_seller_id": {
+          "columns": [
+            "seller_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_status": {
+          "columns": [
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_title_description": {
+          "columns": [
+            "title",
+            "description"
+          ],
+          "unique": false,
+          "type": "FULLTEXT"
+        }
+      },
+      "sampleData": null
+    },
+    "reviews": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "reviewer_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "reviewed_user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "order_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "rating",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "comment",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "reviewer_id",
+          "references": "users.id",
+          "constraint": "reviews_ibfk_1"
+        },
+        {
+          "column": "reviewed_user_id",
+          "references": "users.id",
+          "constraint": "reviews_ibfk_2"
+        },
+        {
+          "column": "order_id",
+          "references": "orders.id",
+          "constraint": "reviews_ibfk_3"
+        }
+      ],
+      "indexes": {
+        "idx_rating": {
+          "columns": [
+            "rating"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_reviewed_user_id": {
+          "columns": [
+            "reviewed_user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "order_id": {
+          "columns": [
+            "order_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "unique_review": {
+          "columns": [
+            "reviewer_id",
+            "order_id"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "saved_payment_methods": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "payment_method_type",
+          "type": "enum('card','bank_account','paypal','other')",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "provider",
+          "type": "enum('stripe','razorpay','paypal')",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "provider_payment_method_id",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "Payment method ID from provider"
+        },
+        {
+          "name": "last_four",
+          "type": "varchar(4)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Last 4 digits of card"
+        },
+        {
+          "name": "card_brand",
+          "type": "varchar(50)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Visa, Mastercard, etc."
+        },
+        {
+          "name": "expiry_month",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Card expiry month"
+        },
+        {
+          "name": "expiry_year",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Card expiry year"
+        },
+        {
+          "name": "is_default",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "saved_payment_methods_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_is_default": {
+          "columns": [
+            "is_default"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_provider": {
+          "columns": [
+            "provider"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "settings": {
+      "rowCount": 15,
+      "estimatedRows": 15,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "category",
+          "type": "varchar(50)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": "general, api, email, payment, notification, chat, ai"
+        },
+        {
+          "name": "setting_key",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "setting_value",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_encrypted",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_by_admin_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "updated_by_admin_id",
+          "references": "users.id",
+          "constraint": "settings_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_category": {
+          "columns": [
+            "category"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_setting_key": {
+          "columns": [
+            "setting_key"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "setting_key": {
+          "columns": [
+            "setting_key"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "updated_by_admin_id": {
+          "columns": [
+            "updated_by_admin_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": [
+        {
+          "id": 1,
+          "category": "general",
+          "setting_key": "app_name",
+          "setting_value": "\"RoundBuy\"",
+          "description": "Application name",
+          "is_encrypted": 0,
+          "updated_by_admin_id": null,
+          "created_at": "2025-12-17T19:34:22.000Z",
+          "updated_at": "2025-12-17T19:34:22.000Z"
+        },
+        {
+          "id": 2,
+          "category": "general",
+          "setting_key": "timezone",
+          "setting_value": "\"Asia/Calcutta\"",
+          "description": "Default timezone",
+          "is_encrypted": 0,
+          "updated_by_admin_id": null,
+          "created_at": "2025-12-17T19:34:22.000Z",
+          "updated_at": "2025-12-17T19:34:22.000Z"
+        },
+        {
+          "id": 3,
+          "category": "general",
+          "setting_key": "currency",
+          "setting_value": "\"INR\"",
+          "description": "Default currency",
+          "is_encrypted": 0,
+          "updated_by_admin_id": null,
+          "created_at": "2025-12-17T19:34:22.000Z",
+          "updated_at": "2025-12-17T19:34:22.000Z"
+        }
+      ]
+    },
+    "subscription_plans": {
+      "rowCount": 4,
+      "estimatedRows": 4,
+      "sizeInMB": "0.08",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "slug",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "subheading",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description_bullets",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "price",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": "0.00",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "renewal_price",
+          "type": "decimal(10,2)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "duration_days",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "",
+          "default": "30",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "features",
+          "type": "longtext",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "{\"max_ads\": 10, \"max_banners\": 2, \"featured_ads\": 1, \"support_priority\": \"standard\"}"
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "sort_order",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        },
+        {
+          "name": "color_hex",
+          "type": "varchar(7)",
+          "nullable": true,
+          "key": "",
+          "default": "'#4CAF50'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "tag",
+          "type": "varchar(20)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "stripe_product_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "stripe_price_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "paddle_price_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "paddle_product_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "slug": {
+          "columns": [
+            "slug"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": [
+        {
+          "id": 1,
+          "name": "Green",
+          "slug": "green",
+          "subheading": null,
+          "description": "Basic plan for new users",
+          "description_bullets": null,
+          "price": "0.00",
+          "renewal_price": null,
+          "duration_days": 365,
+          "features": "{\"max_ads\": 3, \"max_banners\": 0, \"featured_ads\": 0, \"support_priority\": \"low\", \"chat_enabled\": true}",
+          "is_active": 1,
+          "sort_order": 1,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-12-01T14:17:33.000Z",
+          "color_hex": "#4CAF50",
+          "tag": null,
+          "stripe_product_id": null,
+          "stripe_price_id": null,
+          "paddle_price_id": null,
+          "paddle_product_id": null
+        },
+        {
+          "id": 2,
+          "name": "Gold",
+          "slug": "gold",
+          "subheading": null,
+          "description": "For casual sellers",
+          "description_bullets": "[\"test\",\"tests\"]",
+          "price": "0.00",
+          "renewal_price": null,
+          "duration_days": 30,
+          "features": "{\"max_ads\":10,\"max_banners\":1,\"featured_ads\":1,\"support_priority\":\"standard\",\"chat_enabled\":true,\"analytics\":true}",
+          "is_active": 1,
+          "sort_order": 2,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-12-03T10:40:38.000Z",
+          "color_hex": "#000000",
+          "tag": null,
+          "stripe_product_id": null,
+          "stripe_price_id": null,
+          "paddle_price_id": null,
+          "paddle_product_id": null
+        },
+        {
+          "id": 3,
+          "name": "Violet",
+          "slug": "violet",
+          "subheading": null,
+          "description": "For regular sellers",
+          "description_bullets": null,
+          "price": "0.00",
+          "renewal_price": null,
+          "duration_days": 30,
+          "features": "{\"max_ads\": 50, \"max_banners\": 5, \"featured_ads\": 5, \"support_priority\": \"high\", \"chat_enabled\": true, \"analytics\": true, \"verification_badge\": true}",
+          "is_active": 1,
+          "sort_order": 3,
+          "created_at": "2025-11-28T13:04:14.000Z",
+          "updated_at": "2025-12-01T14:18:06.000Z",
+          "color_hex": "#4CAF50",
+          "tag": null,
+          "stripe_product_id": null,
+          "stripe_price_id": null,
+          "paddle_price_id": null,
+          "paddle_product_id": null
+        }
+      ]
+    },
+    "support_tickets": {
+      "rowCount": 4,
+      "estimatedRows": 4,
+      "sizeInMB": "0.11",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "ticket_number",
+          "type": "varchar(20)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "category",
+          "type": "varchar(20)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "subject",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "description",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "related_ad_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "varchar(20)",
+          "nullable": true,
+          "key": "",
+          "default": "'open'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "priority",
+          "type": "enum('low','medium','high','urgent')",
+          "nullable": true,
+          "key": "",
+          "default": "'medium'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "assigned_to",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        },
+        {
+          "name": "resolved_at",
+          "type": "timestamp",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "support_tickets_ibfk_1"
+        },
+        {
+          "column": "related_ad_id",
+          "references": "advertisements.id",
+          "constraint": "support_tickets_ibfk_2"
+        },
+        {
+          "column": "assigned_to",
+          "references": "users.id",
+          "constraint": "support_tickets_ibfk_3"
+        }
+      ],
+      "indexes": {
+        "assigned_to": {
+          "columns": [
+            "assigned_to"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_category": {
+          "columns": [
+            "category"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_ticket_number": {
+          "columns": [
+            "ticket_number"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_tickets": {
+          "columns": [
+            "user_id",
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "related_ad_id": {
+          "columns": [
+            "related_ad_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "ticket_number": {
+          "columns": [
+            "ticket_number"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "support_ticket_attachments": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "ticket_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_path",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_name",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "file_type",
+          "type": "varchar(50)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "uploaded_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "ticket_id",
+          "references": "support_tickets.id",
+          "constraint": "support_ticket_attachments_ibfk_1"
+        },
+        {
+          "column": "message_id",
+          "references": "support_ticket_messages.id",
+          "constraint": "support_ticket_attachments_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_ticket_attachments": {
+          "columns": [
+            "ticket_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "message_id": {
+          "columns": [
+            "message_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "support_ticket_messages": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.05",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "ticket_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "message",
+          "type": "text",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_staff_reply",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "ticket_id",
+          "references": "support_tickets.id",
+          "constraint": "support_ticket_messages_ibfk_1"
+        },
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "support_ticket_messages_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_ticket_messages": {
+          "columns": [
+            "ticket_id",
+            "created_at"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "users": {
+      "rowCount": 25,
+      "estimatedRows": 25,
+      "sizeInMB": "0.13",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "email",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "password_hash",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "full_name",
+          "type": "varchar(255)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "phone",
+          "type": "varchar(20)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "avatar",
+          "type": "varchar(500)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "billing_address",
+          "type": "text",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Billing address for payments"
+        },
+        {
+          "name": "role",
+          "type": "enum('subscriber','editor','admin')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'subscriber'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "subscription_plan_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "subscription_start_date",
+          "type": "datetime",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "subscription_end_date",
+          "type": "datetime",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_verified",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "verification_token",
+          "type": "varchar(64)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "verification_expires",
+          "type": "datetime",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "language_preference",
+          "type": "varchar(5)",
+          "nullable": true,
+          "key": "",
+          "default": "'en'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "last_login",
+          "type": "datetime",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        },
+        {
+          "name": "country_code",
+          "type": "varchar(3)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "currency_code",
+          "type": "varchar(3)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [],
+      "indexes": {
+        "email": {
+          "columns": [
+            "email"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        },
+        "idx_email": {
+          "columns": [
+            "email"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_role": {
+          "columns": [
+            "role"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_subscription_end_date": {
+          "columns": [
+            "subscription_end_date"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_subscription_plan": {
+          "columns": [
+            "subscription_plan_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_verification_token": {
+          "columns": [
+            "verification_token"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "user_device_tokens": {
+      "rowCount": 1,
+      "estimatedRows": 0,
+      "sizeInMB": "0.11",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": "NULL for guest users"
+        },
+        {
+          "name": "device_token",
+          "type": "varchar(500)",
+          "nullable": false,
+          "key": "UNI",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "platform",
+          "type": "enum('ios','android','web')",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "device_name",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "device_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "NULL",
+          "extra": "",
+          "comment": "Unique device ID for guests"
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "last_used_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "user_device_tokens_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_device_id": {
+          "columns": [
+            "device_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_device_token": {
+          "columns": [
+            "device_token"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_platform": {
+          "columns": [
+            "platform"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "unique_device_token": {
+          "columns": [
+            "device_token"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "user_locations": {
+      "rowCount": 4,
+      "estimatedRows": 4,
+      "sizeInMB": "0.06",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "name",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": "Location name (e.g., Home, Office, Warehouse)"
+        },
+        {
+          "name": "street",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "street2",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "city",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "region",
+          "type": "varchar(100)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": "State/Province"
+        },
+        {
+          "name": "country",
+          "type": "varchar(100)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "zip_code",
+          "type": "varchar(20)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "latitude",
+          "type": "decimal(10,8)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "longitude",
+          "type": "decimal(11,8)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_default",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_active",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "1",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "updated_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "on update current_timestamp()",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "user_locations_ibfk_1"
+        }
+      ],
+      "indexes": {
+        "idx_is_active": {
+          "columns": [
+            "is_active"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_is_default": {
+          "columns": [
+            "is_default"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "user_notifications": {
+      "rowCount": 0,
+      "estimatedRows": 0,
+      "sizeInMB": "0.09",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "notification_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_read",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "MUL",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "is_clicked",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "delivered_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "read_at",
+          "type": "datetime",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "clicked_at",
+          "type": "datetime",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "notification_id",
+          "references": "notifications.id",
+          "constraint": "user_notifications_ibfk_1"
+        },
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "user_notifications_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_is_read": {
+          "columns": [
+            "is_read"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_notification_id": {
+          "columns": [
+            "notification_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_read": {
+          "columns": [
+            "user_id",
+            "is_read"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "unique_user_notification": {
+          "columns": [
+            "user_id",
+            "notification_id"
+          ],
+          "unique": true,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    },
+    "user_subscriptions": {
+      "rowCount": 3,
+      "estimatedRows": 1,
+      "sizeInMB": "0.09",
+      "columns": [
+        {
+          "name": "id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "PRI",
+          "default": null,
+          "extra": "auto_increment",
+          "comment": ""
+        },
+        {
+          "name": "user_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "subscription_plan_id",
+          "type": "int(11)",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "start_date",
+          "type": "datetime",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "end_date",
+          "type": "datetime",
+          "nullable": false,
+          "key": "MUL",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "status",
+          "type": "enum('active','expired','cancelled','pending')",
+          "nullable": true,
+          "key": "MUL",
+          "default": "'pending'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "stripe_subscription_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "stripe_customer_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "payment_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "payment_method",
+          "type": "varchar(50)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "amount_paid",
+          "type": "decimal(10,2)",
+          "nullable": false,
+          "key": "",
+          "default": null,
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "currency_code",
+          "type": "varchar(3)",
+          "nullable": true,
+          "key": "",
+          "default": "'INR'",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "auto_renew",
+          "type": "tinyint(1)",
+          "nullable": true,
+          "key": "",
+          "default": "0",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "renewal_price",
+          "type": "decimal(10,2)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "created_at",
+          "type": "timestamp",
+          "nullable": false,
+          "key": "",
+          "default": "current_timestamp()",
+          "extra": "",
+          "comment": ""
+        },
+        {
+          "name": "paddle_customer_id",
+          "type": "varchar(255)",
+          "nullable": true,
+          "key": "",
+          "default": "NULL",
+          "extra": "",
+          "comment": ""
+        }
+      ],
+      "foreignKeys": [
+        {
+          "column": "user_id",
+          "references": "users.id",
+          "constraint": "user_subscriptions_ibfk_1"
+        },
+        {
+          "column": "subscription_plan_id",
+          "references": "subscription_plans.id",
+          "constraint": "user_subscriptions_ibfk_2"
+        }
+      ],
+      "indexes": {
+        "idx_end_date": {
+          "columns": [
+            "end_date"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_status": {
+          "columns": [
+            "status"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "idx_user_id": {
+          "columns": [
+            "user_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        },
+        "subscription_plan_id": {
+          "columns": [
+            "subscription_plan_id"
+          ],
+          "unique": false,
+          "type": "BTREE"
+        }
+      },
+      "sampleData": null
+    }
+  }
+}

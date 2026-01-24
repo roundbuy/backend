@@ -270,7 +270,7 @@ const login = async (req, res) => {
 
     // Get user
     const [users] = await promisePool.query(
-      `SELECT id, email, password_hash, full_name, role, is_active, is_verified, language_preference,
+      `SELECT id, email, username, avatar, password_hash, full_name, role, is_active, is_verified, language_preference,
               subscription_plan_id, subscription_start_date, subscription_end_date
        FROM users WHERE email = ?`,
       [email]
@@ -316,16 +316,6 @@ const login = async (req, res) => {
 
     const hasSubscription = subscriptions.length > 0;
 
-    // If no active subscription, indicate in response
-    if (!hasSubscription) {
-      // Allow login but flag that subscription is needed
-      console.log(`⚠️ User ${user.email} logged in without active subscription`);
-      return res.status(401).json({
-        success: false,
-        message: 'logged in without active subscription'
-      });
-    }
-
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
 
@@ -345,6 +335,34 @@ const login = async (req, res) => {
     // Generate tokens
     const tokens = generateTokens(user.id, user.role);
 
+    // If no active subscription, allow login but flag that subscription is needed
+    if (!hasSubscription) {
+      console.log(`⚠️ User ${user.email} logged in without active subscription`);
+      return res.json({
+        success: true,
+        message: 'Login successful',
+        data: {
+          user: {
+            id: user.id,
+            email: user.email,
+            username: user.username,
+            avatar: user.avatar,
+            full_name: user.full_name,
+            role: user.role,
+            language_preference: user.language_preference,
+            is_verified: user.is_verified,
+            has_active_subscription: false,
+            requires_subscription: true,
+            subscription_plan_id: user.subscription_plan_id,
+            subscription_start_date: user.subscription_start_date,
+            subscription_end_date: user.subscription_end_date
+          },
+          ...tokens,
+          requires_subscription: true
+        }
+      });
+    }
+
     res.json({
       success: true,
       message: 'Login successful',
@@ -352,6 +370,8 @@ const login = async (req, res) => {
         user: {
           id: user.id,
           email: user.email,
+          username: user.username,
+          avatar: user.avatar,
           full_name: user.full_name,
           role: user.role,
           language_preference: user.language_preference,

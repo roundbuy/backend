@@ -1,5 +1,7 @@
 const { promisePool } = require('../../config/database');
 const { validationResult } = require('express-validator');
+const { createNotificationForUser } = require('../../utils/notificationHelper');
+const { checkTextModeration } = require('../../services/moderation.service');
 
 // Get user's conversations
 const getConversations = async (req, res) => {
@@ -205,6 +207,31 @@ const sendMessage = async (req, res) => {
       });
     }
 
+    // Check message content for moderation violations
+    const moderationResult = await checkTextModeration(message);
+    if (!moderationResult.isClean) {
+      const violationCategories = moderationResult.foundWords.map(w => w.category);
+      const violationWords = moderationResult.foundWords.map(w => w.word);
+
+      console.log(`[CHAT MODERATION] Message blocked for user ${senderId}:`, {
+        violations: violationWords,
+        categories: violationCategories,
+        severity: moderationResult.severity
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Your message contains prohibited content and cannot be sent.',
+        error_code: 'CONTENT_MODERATION_FAILED',
+        details: {
+          violations: violationCategories.includes('contact_info')
+            ? ['Phone numbers, emails, and contact information are not allowed in messages.']
+            : ['Your message contains inappropriate content.'],
+          severity: moderationResult.severity
+        }
+      });
+    }
+
     // Determine buyer and seller for conversation
     // senderId is always the buyer (interested party)
     // receiverId (advertisement.seller_id) is always the seller
@@ -258,6 +285,32 @@ const sendMessage = async (req, res) => {
       WHERE m.id = ?
     `, [messageResult.insertId]);
 
+    // Create notification for receiver
+    try {
+      await createNotificationForUser({
+        user_id: receiverId,
+        type: 'popup',
+        title: 'New Message',
+        message: `${newMessage[0].sender_name} sent you a message`,
+        data: {
+          conversation_id: conversationId,
+          advertisement_id,
+          message_id: messageResult.insertId
+        },
+        action_type: 'open_screen',
+        action_data: {
+          screen: 'ProductChat',
+          params: {
+            conversationId,
+            advertisement: { id: advertisement_id }
+          }
+        }
+      });
+    } catch (notifError) {
+      console.error('Failed to create notification:', notifError);
+      // Don't fail the message send if notification fails
+    }
+
     res.status(201).json({
       success: true,
       message: 'Message sent successfully',
@@ -289,10 +342,11 @@ const makeOffer = async (req, res) => {
     const senderId = req.user.id;
     const { conversation_id, offered_price, message } = req.body;
 
-    // Verify user has access to conversation
+    // Verify user has access to conversation and get conversation details
     const [conversationCheck] = await promisePool.execute(`
-      SELECT id, advertisement_id FROM conversations
-      WHERE id = ? AND (buyer_id = ? OR seller_id = ?)
+      SELECT c.id, c.advertisement_id, c.buyer_id, c.seller_id
+      FROM conversations c
+      WHERE c.id = ? AND (c.buyer_id = ? OR c.seller_id = ?)
     `, [conversation_id, senderId, senderId]);
 
     if (conversationCheck.length === 0) {
@@ -301,6 +355,8 @@ const makeOffer = async (req, res) => {
         message: 'Access denied to this conversation'
       });
     }
+
+    const conversation = conversationCheck[0];
 
     // Check if there's already a pending offer in this conversation
     const [pendingOffer] = await promisePool.execute(`
@@ -315,29 +371,100 @@ const makeOffer = async (req, res) => {
       });
     }
 
-    // Get user's currency preference
+    // Get user's currency preference (for display purposes)
     const [userPrefs] = await promisePool.execute(`
       SELECT currency_code FROM users WHERE id = ?
     `, [senderId]);
 
     const currencyCode = userPrefs[0]?.currency_code || 'INR';
 
-    // Insert offer (let MySQL calculate expiration date)
+    // Check offer message for moderation violations (if message is provided)
+    if (message) {
+      const moderationResult = await checkTextModeration(message);
+      if (!moderationResult.isClean) {
+        const violationCategories = moderationResult.foundWords.map(w => w.category);
+        const violationWords = moderationResult.foundWords.map(w => w.word);
+
+        console.log(`[OFFER MODERATION] Offer message blocked for user ${senderId}:`, {
+          violations: violationWords,
+          categories: violationCategories,
+          severity: moderationResult.severity
+        });
+
+        return res.status(400).json({
+          success: false,
+          message: 'Your offer message contains prohibited content and cannot be sent.',
+          error_code: 'CONTENT_MODERATION_FAILED',
+          details: {
+            violations: violationCategories.includes('contact_info')
+              ? ['Phone numbers, emails, and contact information are not allowed in offer messages.']
+              : ['Your offer message contains inappropriate content.'],
+            severity: moderationResult.severity
+          }
+        });
+      }
+    }
+
+    // Insert offer with advertisement_id, buyer_id, and seller_id
     const [result] = await promisePool.execute(`
-      INSERT INTO offers (conversation_id, sender_id, offered_price, currency_code, message, expires_at)
-      VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))
-    `, [conversation_id, senderId, offered_price, currencyCode, message || '']);
+      INSERT INTO offers (
+        conversation_id, 
+        advertisement_id, 
+        buyer_id, 
+        seller_id, 
+        sender_id, 
+        offered_price, 
+        message
+      )
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `, [
+      conversation_id,
+      conversation.advertisement_id,
+      conversation.buyer_id,
+      conversation.seller_id,
+      senderId,
+      offered_price,
+      message || ''
+    ]);
 
     // Get the inserted offer
     const [newOffer] = await promisePool.execute(`
       SELECT
         o.*,
         u.full_name as sender_name,
-        u.avatar as sender_avatar
+        u.avatar as sender_avatar,
+        a.title as advertisement_title
       FROM offers o
       JOIN users u ON o.sender_id = u.id
+      JOIN advertisements a ON o.advertisement_id = a.id
       WHERE o.id = ?
     `, [result.insertId]);
+
+    // Create notification for seller (receiver of the offer)
+    const receiverId = conversation.seller_id;
+    try {
+      await createNotificationForUser({
+        user_id: receiverId,
+        type: 'popup',
+        title: 'New Offer Received',
+        message: `${newOffer[0].sender_name} offered ${currencyCode} ${offered_price} on ${newOffer[0].advertisement_title}`,
+        data: {
+          conversation_id,
+          offer_id: result.insertId,
+          advertisement_id: conversation.advertisement_id
+        },
+        action_type: 'open_screen',
+        action_data: {
+          screen: 'ProductChat',
+          params: {
+            conversationId: conversation_id,
+            advertisement: { id: conversation.advertisement_id }
+          }
+        }
+      });
+    } catch (notifError) {
+      console.error('Failed to create offer notification:', notifError);
+    }
 
     res.status(201).json({
       success: true,
@@ -423,9 +550,70 @@ const respondToOffer = async (req, res) => {
     // If counter offer, create a new offer
     if (action === 'counter') {
       await promisePool.execute(`
-        INSERT INTO offers (conversation_id, sender_id, offered_price, currency_code, message, expires_at)
-        VALUES (?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 7 DAY))
-      `, [offer.conversation_id, userId, counter_price, offer.currency_code, `Counter offer: ₹${counter_price}`]);
+        INSERT INTO offers (
+          conversation_id, 
+          advertisement_id, 
+          buyer_id, 
+          seller_id, 
+          sender_id, 
+          offered_price, 
+          message
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [
+        offer.conversation_id,
+        offer.advertisement_id,
+        offer.buyer_id,
+        offer.seller_id,
+        userId,
+        counter_price,
+        `Counter offer: ${counter_price}`
+      ]);
+    }
+
+    // Create notification for offer sender
+    try {
+      const notificationReceiverId = offer.sender_id;
+      let notificationTitle, notificationMessage, notificationType;
+
+      if (action === 'accept') {
+        notificationType = 'offer_accepted';
+        notificationTitle = 'Offer Accepted!';
+        notificationMessage = `Your offer of ${offer.currency_code} ${offer.offered_price} was accepted`;
+      } else if (action === 'reject') {
+        notificationType = 'offer_rejected';
+        notificationTitle = 'Offer Declined';
+        notificationMessage = `Your offer of ${offer.currency_code} ${offer.offered_price} was declined`;
+      } else if (action === 'counter') {
+        notificationType = 'offer_counter';
+        notificationTitle = 'Counter Offer Received';
+        notificationMessage = `Counter offer of ${offer.currency_code} ${counter_price} received`;
+      }
+
+      if (notificationType) {
+        await createNotificationForUser({
+          user_id: notificationReceiverId,
+          type: 'popup',
+          title: notificationTitle,
+          message: notificationMessage,
+          data: {
+            conversation_id: offer.conversation_id,
+            offer_id: offerId,
+            advertisement_id: offer.advertisement_id,
+            action
+          },
+          action_type: 'open_screen',
+          action_data: {
+            screen: 'ProductChat',
+            params: {
+              conversationId: offer.conversation_id,
+              advertisement: { id: offer.advertisement_id }
+            }
+          }
+        });
+      }
+    } catch (notifError) {
+      console.error('Failed to create offer response notification:', notifError);
     }
 
     res.json({

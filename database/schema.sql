@@ -173,11 +173,14 @@ CREATE TABLE ad_sizes (
     id INT PRIMARY KEY AUTO_INCREMENT,
     name VARCHAR(50) NOT NULL,
     slug VARCHAR(50) UNIQUE NOT NULL,
+    gender_id INT DEFAULT NULL COMMENT 'Gender category for this size',
     is_active BOOLEAN DEFAULT TRUE,
     sort_order INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (gender_id) REFERENCES ad_genders(id) ON DELETE SET NULL,
     INDEX idx_slug (slug),
+    INDEX idx_gender_id (gender_id),
     INDEX idx_is_active (is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -800,13 +803,28 @@ INSERT INTO ad_genders (name, slug, sort_order) VALUES
 ('Other', 'other', 3);
 
 -- Insert default ad sizes
-INSERT INTO ad_sizes (name, slug, sort_order) VALUES
-('XS', 'xs', 1),
-('S', 's', 2),
-('M', 'm', 3),
-('L', 'l', 4),
-('XL', 'xl', 5),
-('XXL', 'xxl', 6);
+-- Static names (Men XS, Women S, etc.) with dynamic gender_id references
+INSERT INTO ad_sizes (name, slug, gender_id, sort_order) VALUES
+-- Men's sizes
+('Men XS', 'men-xs', (SELECT id FROM ad_genders WHERE slug = 'male'), 1),
+('Men S', 'men-s', (SELECT id FROM ad_genders WHERE slug = 'male'), 2),
+('Men M', 'men-m', (SELECT id FROM ad_genders WHERE slug = 'male'), 3),
+('Men L', 'men-l', (SELECT id FROM ad_genders WHERE slug = 'male'), 4),
+('Men XL', 'men-xl', (SELECT id FROM ad_genders WHERE slug = 'male'), 5),
+('Men XXL', 'men-xxl', (SELECT id FROM ad_genders WHERE slug = 'male'), 6),
+-- Women's sizes
+('Women XS', 'women-xs', (SELECT id FROM ad_genders WHERE slug = 'female'), 7),
+('Women S', 'women-s', (SELECT id FROM ad_genders WHERE slug = 'female'), 8),
+('Women M', 'women-m', (SELECT id FROM ad_genders WHERE slug = 'female'), 9),
+('Women L', 'women-l', (SELECT id FROM ad_genders WHERE slug = 'female'), 10),
+('Women XL', 'women-xl', (SELECT id FROM ad_genders WHERE slug = 'female'), 11),
+('Women XXL', 'women-xxl', (SELECT id FROM ad_genders WHERE slug = 'female'), 12),
+-- Children's sizes
+('Children XS', 'children-xs', (SELECT id FROM ad_genders WHERE slug = 'other'), 13),
+('Children S', 'children-s', (SELECT id FROM ad_genders WHERE slug = 'other'), 14),
+('Children M', 'children-m', (SELECT id FROM ad_genders WHERE slug = 'other'), 15),
+('Children L', 'children-l', (SELECT id FROM ad_genders WHERE slug = 'other'), 16),
+('Children XL', 'children-xl', (SELECT id FROM ad_genders WHERE slug = 'other'), 17);
 
 -- Insert default ad colors
 INSERT INTO ad_colors (name, slug, hex_code, sort_order) VALUES

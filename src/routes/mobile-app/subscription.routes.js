@@ -23,6 +23,27 @@ router.get('/plans', mobileSubscriptionController.getPlans);
 router.get('/plans/:planId', mobileSubscriptionController.getPlanDetails);
 
 /**
+ * @route POST /api/v1/mobile-app/subscription/create-payment-intent
+ * @desc Create a payment intent for subscription purchase
+ * @access Private (requires authentication)
+ * @body {number} plan_id - Plan ID
+ * @body {string} currency_code - Currency code (e.g., USD, INR)
+ */
+router.post('/create-payment-intent', authenticate, mobileSubscriptionController.createPaymentIntent);
+
+/**
+ * @route POST /api/v1/mobile-app/subscription/create-payment-method
+ * @desc Create payment method (server-side tokenization)
+ * @access Private (requires authentication)
+ * @body {string} card_number - Card number
+ * @body {string} exp_month - Expiry month (MM)
+ * @body {string} exp_year - Expiry year (YY or YYYY)
+ * @body {string} cvc - Card CVC
+ * @body {object} billing_details - Optional billing details
+ */
+router.post('/create-payment-method', authenticate, mobileSubscriptionController.createPaymentMethod);
+
+/**
  * @route POST /api/v1/mobile-app/subscription/purchase
  * @desc Purchase a subscription plan
  * @access Private (requires authentication)

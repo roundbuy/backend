@@ -8,9 +8,9 @@ const fs = require('fs').promises;
  */
 const getFilters = async (req, res) => {
   try {
-    // Get categories
+    // Get categories with requires_size field
     const [categories] = await promisePool.query(
-      'SELECT id, name, slug FROM categories WHERE parent_id IS NULL AND is_active = TRUE ORDER BY sort_order'
+      'SELECT id, name, slug, requires_size FROM categories WHERE parent_id IS NULL AND is_active = TRUE ORDER BY sort_order'
     );
 
     // Get subcategories for each category
@@ -42,9 +42,9 @@ const getFilters = async (req, res) => {
       'SELECT id, name, slug FROM ad_genders WHERE is_active = TRUE ORDER BY sort_order'
     );
 
-    // Get sizes
+    // Get sizes with gender_id
     const [sizes] = await promisePool.query(
-      'SELECT id, name, slug FROM ad_sizes WHERE is_active = TRUE ORDER BY sort_order'
+      'SELECT id, name, slug, gender_id FROM ad_sizes WHERE is_active = TRUE ORDER BY sort_order'
     );
 
     // Get colors
@@ -59,6 +59,7 @@ const getFilters = async (req, res) => {
           id: cat.id,
           name: cat.name,
           slug: cat.slug,
+          requires_size: cat.requires_size,
           subcategories: cat.subcategories && cat.subcategories[0]?.id ? cat.subcategories : []
         })),
         activities,
@@ -140,7 +141,8 @@ const createAdvertisement = async (req, res) => {
     if (!title || !description || !category_id || !price) {
       return res.status(400).json({
         success: false,
-        message: 'Title, description, category, and price are required'
+        message: 'Title, description, category, and price are required',
+        error_code: 'VALIDATION_ERROR'
       });
     }
 
@@ -202,13 +204,13 @@ const createAdvertisement = async (req, res) => {
       endDate.setDate(endDate.getDate() + display_duration_days);
     }
 
-    // Create advertisement
+    // Create advertisement with 'published' status (auto-publish)
     const [result] = await promisePool.query(
       `INSERT INTO advertisements
        (user_id, title, description, images, category_id, subcategory_id, location_id,
         price, display_duration_days, activity_id, condition_id, age_id, gender_id,
         size_id, color_id, status, start_date, end_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', NOW(), ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', NOW(), ?)`,
       [
         userId,
         title,
@@ -230,6 +232,41 @@ const createAdvertisement = async (req, res) => {
     );
 
     const adId = result.insertId;
+
+    // Send notification: Ad submitted for review
+    const { createNotificationForUser } = require('../../utils/notificationHelper');
+
+    await createNotificationForUser({
+      user_id: userId,
+      type: 'popup',
+      title: 'Advertisement Submitted',
+      message: `Your ad "${title}" has been submitted for review. We'll notify you once it's published.`,
+      action_type: 'open_screen',
+      action_data: {
+        screen: 'AdDetails',
+        params: { adId }
+      }
+    });
+
+    // Schedule notification for auto-publish (simulating 5-minute review)
+    // In production, you might use a job queue for this
+    setTimeout(async () => {
+      try {
+        await createNotificationForUser({
+          user_id: userId,
+          type: 'popup',
+          title: 'Advertisement Published! 🎉',
+          message: `Your ad "${title}" is now live and visible to buyers!`,
+          action_type: 'open_screen',
+          action_data: {
+            screen: 'AdDetails',
+            params: { adId }
+          }
+        });
+      } catch (error) {
+        console.error('Error sending publish notification:', error);
+      }
+    }, 300000); // 5 minutes
 
     // Get the created advertisement with full details
     const [ads] = await promisePool.query(
@@ -661,6 +698,7 @@ const browseAdvertisements = async (req, res) => {
       max_price,
       latitude,
       longitude,
+      user_id,
       radius = 50, // km
       sort = 'created_at',
       order = 'DESC',
@@ -676,6 +714,12 @@ const browseAdvertisements = async (req, res) => {
       whereClause += ' AND (a.title LIKE ? OR a.description LIKE ?)';
       const searchTerm = `%${search}%`;
       params.push(searchTerm, searchTerm);
+    }
+
+    // User filter
+    if (user_id) {
+      whereClause += ' AND a.user_id = ?';
+      params.push(user_id);
     }
 
     // Category filter
@@ -737,7 +781,11 @@ const browseAdvertisements = async (req, res) => {
              act.name as activity_name, cond.name as condition_name,
              ag.name as age_name, gend.name as gender_name,
              sz.name as size_name, col.name as color_name, col.hex_code,
-             u.full_name as seller_name, u.id as seller_id
+             u.full_name as seller_name, u.id as seller_id,
+             COALESCE(ap.priority_level, 0) as promotion_priority,
+             ap.plan_type as promotion_type,
+             ap.end_date as promotion_end_date,
+             ap.is_active as is_promoted
              ${distanceSelect}
       FROM advertisements a
       LEFT JOIN categories c ON a.category_id = c.id
@@ -750,6 +798,18 @@ const browseAdvertisements = async (req, res) => {
       LEFT JOIN ad_sizes sz ON a.size_id = sz.id
       LEFT JOIN ad_colors col ON a.color_id = col.id
       LEFT JOIN users u ON a.user_id = u.id
+      LEFT JOIN (
+        SELECT ap1.advertisement_id, ap1.priority_level, ap1.plan_type, ap1.end_date, ap1.is_active
+        FROM advertisement_promotions ap1
+        INNER JOIN (
+          SELECT advertisement_id, MAX(priority_level) as max_priority
+          FROM advertisement_promotions
+          WHERE is_active = TRUE AND status = 'active' AND end_date > NOW()
+          GROUP BY advertisement_id
+        ) ap2 ON ap1.advertisement_id = ap2.advertisement_id 
+             AND ap1.priority_level = ap2.max_priority
+        WHERE ap1.is_active = TRUE AND ap1.status = 'active' AND ap1.end_date > NOW()
+      ) ap ON a.id = ap.advertisement_id
       ${whereClause}
     `;
 
@@ -758,8 +818,13 @@ const browseAdvertisements = async (req, res) => {
       query += ` HAVING distance <= ${parseFloat(radius)}`;
     }
 
-    query += ` ORDER BY ${sortField === 'distance' && latitude && longitude ? 'distance' : 'a.' + sortField} ${sortOrder}
-      LIMIT ? OFFSET ?`;
+    // Order by promotion priority first, then by selected sort field
+    if (sortField === 'distance' && latitude && longitude) {
+      query += ` ORDER BY promotion_priority DESC, distance ASC, a.created_at DESC`;
+    } else {
+      query += ` ORDER BY promotion_priority DESC, a.${sortField} ${sortOrder}`;
+    }
+    query += ` LIMIT ? OFFSET ?`;
 
     params.push(parseInt(limit), offset);
 

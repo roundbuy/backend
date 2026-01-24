@@ -1,0 +1,513 @@
+{
+  "analyzedAt": "2026-01-04T21:14:27.287Z",
+  "summary": {
+    "tablesInDatabase": 48,
+    "tablesInCode": 80,
+    "tablesInSchema": 48,
+    "missingTables": 46,
+    "unusedTables": 14,
+    "notCreatedFromSchema": 8
+  },
+  "missingTables": [
+    {
+      "table": "Issue",
+      "usedIn": [
+        "src/controllers/mobile-app/issue.controller.js"
+      ]
+    },
+    {
+      "table": "Paddle",
+      "usedIn": [
+        "src/controllers/mobile-app/paddle.controller.js"
+      ]
+    },
+    {
+      "table": "a",
+      "usedIn": [
+        "src/controllers/admin/notification.controller.js",
+        "src/controllers/mobile-app/location.controller.js"
+      ]
+    },
+    {
+      "table": "ad",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "advertisement",
+      "usedIn": [
+        "src/controllers/admin.controller.js",
+        "src/controllers/mobile-app/advertisement.controller.js"
+      ]
+    },
+    {
+      "table": "an",
+      "usedIn": [
+        "src/controllers/mobile-app/advertisement.controller.js"
+      ]
+    },
+    {
+      "table": "api_logs",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "auth",
+      "usedIn": [
+        "src/controllers/admin/notification.controller.js",
+        "src/controllers/mobile-app/issue.controller.js",
+        "src/controllers/mobile-app/notification.controller.js",
+        "src/controllers/mobile-app/subscription.controller.js"
+      ]
+    },
+    {
+      "table": "banner",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "banner_plans",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "banners",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "body",
+      "usedIn": [
+        "src/controllers/mobile-app/issue.controller.js"
+      ]
+    },
+    {
+      "table": "category",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "cents",
+      "usedIn": [
+        "src/controllers/mobile-app/paddle.controller.js"
+      ]
+    },
+    {
+      "table": "conversation",
+      "usedIn": [
+        "src/controllers/mobile-app/messaging.controller.js"
+      ]
+    },
+    {
+      "table": "country",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "currency",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "current",
+      "usedIn": [
+        "src/controllers/mobile-app/auth.controller.js"
+      ]
+    },
+    {
+      "table": "database",
+      "usedIn": [
+        "src/controllers/mobile-app/subscription.controller.js"
+      ]
+    },
+    {
+      "table": "dispute",
+      "usedIn": [
+        "src/controllers/admin/dispute.admin.controller.js",
+        "src/controllers/mobile-app/dispute.controller.js"
+      ]
+    },
+    {
+      "table": "issue",
+      "usedIn": [
+        "src/controllers/mobile-app/issue.controller.js"
+      ]
+    },
+    {
+      "table": "language",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "last",
+      "usedIn": [
+        "src/controllers/auth.controller.js",
+        "src/controllers/mobile-app/auth.controller.js"
+      ]
+    },
+    {
+      "table": "location",
+      "usedIn": [
+        "src/controllers/mobile-app/location.controller.js"
+      ]
+    },
+    {
+      "table": "moderation",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "moderation_queue",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "moderation_words",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "notification",
+      "usedIn": [
+        "src/controllers/admin/notification.controller.js"
+      ]
+    },
+    {
+      "table": "now",
+      "usedIn": [
+        "src/controllers/mobile-app/issue.controller.js"
+      ]
+    },
+    {
+      "table": "offer",
+      "usedIn": [
+        "src/controllers/mobile-app/messaging.controller.js",
+        "src/controllers/mobile-app/offers.controller.js"
+      ]
+    },
+    {
+      "table": "other",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "password",
+      "usedIn": [
+        "src/controllers/mobile-app/auth.controller.js"
+      ]
+    },
+    {
+      "table": "priority",
+      "usedIn": [
+        "src/controllers/admin/dispute.admin.controller.js",
+        "src/controllers/admin/support.admin.controller.js"
+      ]
+    },
+    {
+      "table": "quantity",
+      "usedIn": [
+        "src/controllers/mobile-app/paddle.controller.js"
+      ]
+    },
+    {
+      "table": "query",
+      "usedIn": [
+        "src/controllers/mobile-app/advertisement.controller.js",
+        "src/controllers/mobile-app/settings.controller.js"
+      ]
+    },
+    {
+      "table": "request",
+      "usedIn": [
+        "src/controllers/mobile-app/upload.controller.js"
+      ]
+    },
+    {
+      "table": "setting",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "subscription",
+      "usedIn": [
+        "src/controllers/admin.controller.js",
+        "src/controllers/mobile-app/paddle.controller.js"
+      ]
+    },
+    {
+      "table": "support_messages",
+      "usedIn": [
+        "src/controllers/admin/support.admin.controller.js"
+      ]
+    },
+    {
+      "table": "their",
+      "usedIn": [
+        "src/controllers/user.controller.js"
+      ]
+    },
+    {
+      "table": "this",
+      "usedIn": [
+        "src/controllers/user.controller.js"
+      ]
+    },
+    {
+      "table": "ticket",
+      "usedIn": [
+        "src/controllers/admin/support.admin.controller.js",
+        "src/controllers/mobile-app/support.controller.js"
+      ]
+    },
+    {
+      "table": "translation",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "translation_keys",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "translations",
+      "usedIn": [
+        "src/controllers/admin.controller.js"
+      ]
+    },
+    {
+      "table": "user",
+      "usedIn": [
+        "src/controllers/admin.controller.js",
+        "src/controllers/mobile-app/auth.controller.js",
+        "src/controllers/mobile-app/settings.controller.js",
+        "src/controllers/mobile-app/subscription.controller.js",
+        "src/controllers/user.controller.js"
+      ]
+    }
+  ],
+  "unusedTables": [
+    "admin_activity_logs",
+    "advertisements_demo",
+    "claim_evidence",
+    "claim_messages",
+    "claims",
+    "dispute_claims",
+    "dispute_eligibility_checks",
+    "notification_heartbeat_log",
+    "notifications",
+    "order_items",
+    "orders",
+    "support_ticket_attachments",
+    "support_ticket_messages",
+    "user_notifications"
+  ],
+  "notCreatedFromSchema": [
+    "api_logs",
+    "banner_plans",
+    "banners",
+    "dispute_resolutions",
+    "moderation_queue",
+    "moderation_words",
+    "translation_keys",
+    "translations"
+  ],
+  "allTablesInDatabase": [
+    "ad_activities",
+    "ad_ages",
+    "ad_colors",
+    "ad_conditions",
+    "ad_genders",
+    "ad_sizes",
+    "admin_activity_logs",
+    "advertisement_plans",
+    "advertisements",
+    "advertisements_demo",
+    "categories",
+    "claim_evidence",
+    "claim_messages",
+    "claims",
+    "conversations",
+    "countries",
+    "currencies",
+    "deleted_advertisements",
+    "dispute_claims",
+    "dispute_eligibility_checks",
+    "dispute_evidence",
+    "dispute_messages",
+    "disputes",
+    "favorites",
+    "issue_evidence",
+    "issue_messages",
+    "issues",
+    "languages",
+    "messages",
+    "notification_heartbeat_log",
+    "notifications",
+    "offers",
+    "order_items",
+    "orders",
+    "plan_prices",
+    "products",
+    "reviews",
+    "saved_payment_methods",
+    "settings",
+    "subscription_plans",
+    "support_ticket_attachments",
+    "support_ticket_messages",
+    "support_tickets",
+    "user_device_tokens",
+    "user_locations",
+    "user_notifications",
+    "user_subscriptions",
+    "users"
+  ],
+  "allTablesInCode": [
+    "Issue",
+    "Paddle",
+    "a",
+    "ad",
+    "ad_activities",
+    "ad_ages",
+    "ad_colors",
+    "ad_conditions",
+    "ad_genders",
+    "ad_sizes",
+    "advertisement",
+    "advertisement_plans",
+    "advertisements",
+    "an",
+    "api_logs",
+    "auth",
+    "banner",
+    "banner_plans",
+    "banners",
+    "body",
+    "categories",
+    "category",
+    "cents",
+    "conversation",
+    "conversations",
+    "countries",
+    "country",
+    "currencies",
+    "currency",
+    "current",
+    "database",
+    "deleted_advertisements",
+    "dispute",
+    "dispute_evidence",
+    "dispute_messages",
+    "disputes",
+    "favorites",
+    "issue",
+    "issue_evidence",
+    "issue_messages",
+    "issues",
+    "language",
+    "languages",
+    "last",
+    "location",
+    "messages",
+    "moderation",
+    "moderation_queue",
+    "moderation_words",
+    "notification",
+    "now",
+    "offer",
+    "offers",
+    "other",
+    "password",
+    "plan_prices",
+    "priority",
+    "products",
+    "quantity",
+    "query",
+    "request",
+    "reviews",
+    "saved_payment_methods",
+    "setting",
+    "settings",
+    "subscription",
+    "subscription_plans",
+    "support_messages",
+    "support_tickets",
+    "their",
+    "this",
+    "ticket",
+    "translation",
+    "translation_keys",
+    "translations",
+    "user",
+    "user_device_tokens",
+    "user_locations",
+    "user_subscriptions",
+    "users"
+  ],
+  "allTablesInSchema": [
+    "ad_activities",
+    "ad_ages",
+    "ad_colors",
+    "ad_conditions",
+    "ad_genders",
+    "ad_sizes",
+    "admin_activity_logs",
+    "advertisement_plans",
+    "advertisements",
+    "api_logs",
+    "banner_plans",
+    "banners",
+    "categories",
+    "claim_evidence",
+    "claim_messages",
+    "claims",
+    "conversations",
+    "countries",
+    "currencies",
+    "deleted_advertisements",
+    "dispute_eligibility_checks",
+    "dispute_evidence",
+    "dispute_messages",
+    "dispute_resolutions",
+    "disputes",
+    "favorites",
+    "languages",
+    "messages",
+    "moderation_queue",
+    "moderation_words",
+    "notifications",
+    "offers",
+    "order_items",
+    "orders",
+    "plan_prices",
+    "products",
+    "reviews",
+    "saved_payment_methods",
+    "settings",
+    "subscription_plans",
+    "support_ticket_attachments",
+    "support_ticket_messages",
+    "support_tickets",
+    "translation_keys",
+    "translations",
+    "user_locations",
+    "user_subscriptions",
+    "users"
+  ]
+}

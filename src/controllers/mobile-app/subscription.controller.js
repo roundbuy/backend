@@ -264,6 +264,118 @@ const getPlanDetails = async (req, res) => {
 };
 
 /**
+ * Create payment intent for subscription purchase
+ * POST /api/v1/mobile-app/subscription/create-payment-intent
+ */
+const createPaymentIntent = async (req, res) => {
+  try {
+    const { plan_id, currency_code } = req.body;
+    const userId = req.user.id;
+
+    // Validate required fields
+    if (!plan_id || !currency_code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Plan ID and currency code are required'
+      });
+    }
+
+    // Get plan and price
+    const [plans] = await promisePool.query(
+      `SELECT sp.id, sp.name, sp.duration_days, pp.price, pp.tax_rate, c.code as currency_code
+       FROM subscription_plans sp
+       JOIN plan_prices pp ON sp.id = pp.subscription_plan_id
+       JOIN currencies c ON pp.currency_id = c.id
+       WHERE sp.id = ? AND c.code = ? AND sp.is_active = TRUE`,
+      [plan_id, currency_code]
+    );
+
+    if (plans.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Plan not found or not available in selected currency'
+      });
+    }
+
+    const plan = plans[0];
+    const price = parseFloat(plan.price);
+    const taxRate = parseFloat(plan.tax_rate);
+    const taxAmount = (price * taxRate) / 100;
+    const totalAmount = price + taxAmount;
+
+    // Get user details
+    const [users] = await promisePool.query(
+      'SELECT email, full_name FROM users WHERE id = ?',
+      [userId]
+    );
+
+    if (users.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found'
+      });
+    }
+
+    const user = users[0];
+    const stripe = await getStripeInstance();
+
+    // Create or get Stripe customer
+    let stripeCustomerId = null;
+    const [existingCustomers] = await promisePool.query(
+      'SELECT stripe_customer_id FROM user_subscriptions WHERE user_id = ? AND stripe_customer_id IS NOT NULL LIMIT 1',
+      [userId]
+    );
+
+    if (existingCustomers.length > 0) {
+      stripeCustomerId = existingCustomers[0].stripe_customer_id;
+    } else {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name: user.full_name,
+        metadata: {
+          user_id: userId
+        }
+      });
+      stripeCustomerId = customer.id;
+    }
+
+    // Create payment intent
+    const paymentIntent = await stripe.paymentIntents.create({
+      amount: Math.round(totalAmount * 100), // Convert to cents
+      currency: currency_code.toLowerCase(),
+      customer: stripeCustomerId,
+      automatic_payment_methods: {
+        enabled: true,
+      },
+      metadata: {
+        user_id: userId,
+        plan_id: plan_id,
+        plan_name: plan.name,
+        currency: currency_code
+      }
+    });
+
+    res.json({
+      success: true,
+      data: {
+        client_secret: paymentIntent.client_secret,
+        payment_intent_id: paymentIntent.id,
+        amount: totalAmount,
+        currency: currency_code,
+        customer_id: stripeCustomerId
+      }
+    });
+  } catch (error) {
+    console.error('Create payment intent error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error creating payment intent',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Purchase subscription plan
  * POST /api/v1/mobile-app/subscription/purchase
  */
@@ -398,7 +510,7 @@ const purchasePlan = async (req, res) => {
         auto_renew, renewal_price)
        VALUES (?, ?, ?, ?, 'active', ?, ?, 'stripe', ?, ?, ?, ?)`,
       [userId, plan_id, startDate, endDate, stripeCustomerId, paymentIntent.id,
-       totalAmount, currency_code, auto_renew, renewalPrice]
+        totalAmount, currency_code, auto_renew, renewalPrice]
     );
 
     // Update user's subscription
@@ -620,25 +732,25 @@ const getStripeConfig = async (req, res) => {
 const activateFreePlan = async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     // Check if we have email in body (for new users) or user ID from auth (for logged in users)
     let userId;
     let userEmail;
-    
+
     if (email) {
       // New user flow - get user by email after email verification
       const [users] = await promisePool.query(
         'SELECT id, email FROM users WHERE email = ? AND is_verified = TRUE LIMIT 1',
         [email]
       );
-      
+
       if (users.length === 0) {
         return res.status(404).json({
           success: false,
           message: 'User not found or email not verified'
         });
       }
-      
+
       userId = users[0].id;
       userEmail = users[0].email;
     } else {
@@ -721,9 +833,80 @@ const activateFreePlan = async (req, res) => {
   }
 };
 
+/**
+ * Create Payment Method (Server-side tokenization)
+ * POST /api/v1/mobile-app/subscription/create-payment-method
+ */
+const createPaymentMethod = async (req, res) => {
+  try {
+    const { card_number, exp_month, exp_year, cvc, billing_details } = req.body;
+
+    // Validate required fields
+    if (!card_number || !exp_month || !exp_year || !cvc) {
+      return res.status(400).json({
+        success: false,
+        message: 'Card details are required',
+        error_code: 'VALIDATION_ERROR'
+      });
+    }
+
+    // Get Stripe instance
+    const stripe = await getStripeInstance();
+
+    // Convert 2-digit year to 4-digit if needed
+    let fullYear = parseInt(exp_year);
+    if (fullYear < 100) {
+      // 2-digit year (e.g., 25) -> convert to 4-digit (e.g., 2025)
+      fullYear = 2000 + fullYear;
+    }
+
+    // Step 1: Create a token (Tokens API doesn't require raw card data setting)
+    const token = await stripe.tokens.create({
+      card: {
+        number: card_number,
+        exp_month: parseInt(exp_month),
+        exp_year: fullYear,
+        cvc: cvc
+      }
+    });
+
+    // Step 2: Create payment method from token
+    const paymentMethod = await stripe.paymentMethods.create({
+      type: 'card',
+      card: {
+        token: token.id
+      },
+      billing_details: billing_details || {}
+    });
+
+    res.json({
+      success: true,
+      data: {
+        payment_method_id: paymentMethod.id
+      }
+    });
+  } catch (error) {
+    console.error('Create payment method error:', error);
+    console.error('Error details:', {
+      message: error.message,
+      type: error.type,
+      code: error.code,
+      param: error.param,
+      raw: error.raw
+    });
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create payment method',
+      error_code: 'PAYMENT_METHOD_ERROR'
+    });
+  }
+};
+
 module.exports = {
   getPlans,
   getPlanDetails,
+  createPaymentIntent,
+  createPaymentMethod,
   purchasePlan,
   activateFreePlan,
   getTransactionStatus,

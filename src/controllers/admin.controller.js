@@ -8,7 +8,7 @@ exports.getDashboardStats = async (req, res) => {
     const [subscriptions] = await db.query('SELECT COUNT(*) as total FROM user_subscriptions WHERE status = "active"');
     const [advertisements] = await db.query('SELECT COUNT(*) as total, SUM(CASE WHEN status = "published" THEN 1 ELSE 0 END) as published FROM advertisements');
     const [revenue] = await db.query('SELECT COALESCE(SUM(amount_paid), 0) as total FROM user_subscriptions WHERE status = "active"');
-    
+
     // Recent activity (last 10 activities) - Fixed UNION query
     const [recentActivities] = await db.query(`
       (SELECT 'user_registration' as type, full_name as description, created_at
@@ -198,9 +198,9 @@ exports.toggleUserStatus = async (req, res) => {
 
     await db.query('UPDATE users SET is_active = ? WHERE id = ?', [is_active, id]);
 
-    res.json({ 
-      success: true, 
-      message: is_active ? 'User activated successfully' : 'User banned successfully' 
+    res.json({
+      success: true,
+      message: is_active ? 'User activated successfully' : 'User banned successfully'
     });
   } catch (error) {
     console.error('Toggle user status error:', error);
@@ -1697,7 +1697,12 @@ exports.deleteAdGender = async (req, res) => {
 
 exports.getAdSizes = async (req, res) => {
   try {
-    const [sizes] = await db.query('SELECT * FROM ad_sizes ORDER BY sort_order ASC');
+    const [sizes] = await db.query(`
+      SELECT s.*, g.name as gender_name 
+      FROM ad_sizes s 
+      LEFT JOIN ad_genders g ON s.gender_id = g.id 
+      ORDER BY s.sort_order ASC
+    `);
 
     res.json({ success: true, data: sizes });
   } catch (error) {
@@ -1708,11 +1713,11 @@ exports.getAdSizes = async (req, res) => {
 
 exports.createAdSize = async (req, res) => {
   try {
-    const { name, slug, is_active, sort_order } = req.body;
+    const { name, slug, gender_id, is_active, sort_order } = req.body;
 
     const [result] = await db.query(
-      'INSERT INTO ad_sizes (name, slug, is_active, sort_order) VALUES (?, ?, ?, ?)',
-      [name, slug, is_active !== undefined ? is_active : true, sort_order || 0]
+      'INSERT INTO ad_sizes (name, slug, gender_id, is_active, sort_order) VALUES (?, ?, ?, ?, ?)',
+      [name, slug, gender_id || null, is_active !== undefined ? is_active : true, sort_order || 0]
     );
 
     res.status(201).json({ success: true, message: 'Ad size created successfully', id: result.insertId });
@@ -1725,11 +1730,11 @@ exports.createAdSize = async (req, res) => {
 exports.updateAdSize = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, is_active, sort_order } = req.body;
+    const { name, slug, gender_id, is_active, sort_order } = req.body;
 
     await db.query(
-      'UPDATE ad_sizes SET name = ?, slug = ?, is_active = ?, sort_order = ? WHERE id = ?',
-      [name, slug, is_active, sort_order || 0, id]
+      'UPDATE ad_sizes SET name = ?, slug = ?, gender_id = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, gender_id || null, is_active, sort_order || 0, id]
     );
 
     res.json({ success: true, message: 'Ad size updated successfully' });

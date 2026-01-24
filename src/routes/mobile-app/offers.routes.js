@@ -1,55 +1,37 @@
 const express = require('express');
 const router = express.Router();
-const { authenticate } = require('../../middleware/auth.middleware');
-const {
-  getReceivedOffers,
-  acceptOffer,
-  declineOffer,
-  getAcceptedOffers,
-  getDeclinedOffers,
-  getMadeOffers
-} = require('../../controllers/mobile-app/offers.controller');
+const offersController = require('../../controllers/mobile-app/offers.controller');
+const authMiddleware = require('../../middleware/auth.middleware');
+const subscriptionMiddleware = require('../../middleware/subscription.middleware');
 
-/**
- * @route GET /api/v1/mobile-app/offers/received
- * @desc Get offers received for user's advertisements
- * @access Private
- */
-router.get('/received', authenticate, getReceivedOffers);
+// All offer routes require authentication and active subscription
+router.use(authMiddleware.authenticate);
+router.use(subscriptionMiddleware.checkSubscription);
 
-/**
- * @route PUT /api/v1/mobile-app/offers/:id/accept
- * @desc Accept an offer
- * @access Private
- */
-router.put('/:id/accept', authenticate, acceptOffer);
+// Get all offers for the current user
+// Query params: type (buyer/seller/all), status (pending/accepted/rejected/counter_offered), page, limit
+router.get('/',
+  offersController.getUserOffers
+);
 
-/**
- * @route PUT /api/v1/mobile-app/offers/:id/decline
- * @desc Decline an offer
- * @access Private
- */
-router.put('/:id/decline', authenticate, declineOffer);
+// Get offer statistics for the current user
+router.get('/stats',
+  offersController.getOfferStats
+);
 
-/**
- * @route GET /api/v1/mobile-app/offers/accepted
- * @desc Get accepted offers for user
- * @access Private
- */
-router.get('/accepted', authenticate, getAcceptedOffers);
+// Get offers for a specific advertisement
+router.get('/advertisement/:advertisementId',
+  offersController.getAdvertisementOffers
+);
 
-/**
- * @route GET /api/v1/mobile-app/offers/declined
- * @desc Get declined offers for user
- * @access Private
- */
-router.get('/declined', authenticate, getDeclinedOffers);
+// Accept an offer
+router.post('/:offerId/accept',
+  offersController.acceptOffer
+);
 
-/**
- * @route GET /api/v1/mobile-app/offers/made
- * @desc Get offers made by user as buyer
- * @access Private
- */
-router.get('/made', authenticate, getMadeOffers);
+// Reject/Decline an offer
+router.post('/:offerId/reject',
+  offersController.rejectOffer
+);
 
 module.exports = router;

@@ -24,16 +24,12 @@ router.put('/subscription-plans/:id', adminController.updateSubscriptionPlan);
 router.delete('/subscription-plans/:id', authorize('admin'), adminController.deleteSubscriptionPlan);
 
 // ==================== ADVERTISEMENT PLANS ====================
-router.get('/advertisement-plans', adminController.getAdvertisementPlans);
-router.post('/advertisement-plans', adminController.createAdvertisementPlan);
-router.put('/advertisement-plans/:id', adminController.updateAdvertisementPlan);
-router.delete('/advertisement-plans/:id', authorize('admin'), adminController.deleteAdvertisementPlan);
+const advertisementPlansRoutes = require('./admin/advertisement-plans.admin.routes');
+router.use('/advertisement-plans', advertisementPlansRoutes);
 
 // ==================== BANNER PLANS ====================
-router.get('/banner-plans', adminController.getBannerPlans);
-router.post('/banner-plans', adminController.createBannerPlan);
-router.put('/banner-plans/:id', adminController.updateBannerPlan);
-router.delete('/banner-plans/:id', authorize('admin'), adminController.deleteBannerPlan);
+const bannerPlansRoutes = require('./admin/banner-plans.admin.routes');
+router.use('/banner-plans', bannerPlansRoutes);
 
 // ==================== ADVERTISEMENTS (Content Management) ====================
 router.get('/advertisements', adminController.getAdvertisements);
@@ -136,5 +132,14 @@ router.get('/countries', adminController.getCountries);
 router.post('/countries', adminController.createCountry);
 router.put('/countries/:id', adminController.updateCountry);
 router.delete('/countries/:id', authorize('admin'), adminController.deleteCountry);
+
+// ==================== FAQs ====================
+// ==================== FAQs ====================
+const faqRoutes = require('./admin/faq.admin.routes');
+router.use('/faqs', faqRoutes);
+
+// ==================== WALLET & FINANCE ====================
+const walletRoutes = require('./admin/wallet.admin.routes');
+router.use('/wallets', walletRoutes);
 
 module.exports = router;
