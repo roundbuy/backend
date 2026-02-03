@@ -148,8 +148,8 @@ const getUserProfile = async (req, res) => {
 
         const [users] = await promisePool.query(
             `SELECT id, email, full_name, phone, avatar, country_code, 
-              created_at, updated_at
-       FROM users WHERE id = ?`,
+               created_at, updated_at, last_username_change, username, referral_code
+        FROM users WHERE id = ?`,
             [userId]
         );
 
@@ -226,7 +226,7 @@ const updateUserProfile = async (req, res) => {
         // Get updated user profile
         const [users] = await promisePool.query(
             `SELECT id, email, full_name, phone, avatar, country_code,
-              created_at, updated_at
+              created_at, updated_at, last_username_change, username, referral_code
        FROM users WHERE id = ?`,
             [userId]
         );
@@ -652,15 +652,43 @@ const updateUsername = async (req, res) => {
             });
         }
 
-        // Update username
+        // Check if user has changed username recently (within 31 days)
+        const [userCheck] = await promisePool.query(
+            'SELECT last_username_change FROM users WHERE id = ?',
+            [userId]
+        );
+
+        if (userCheck.length > 0 && userCheck[0].last_username_change) {
+            const lastChange = new Date(userCheck[0].last_username_change);
+            const now = new Date();
+            const timeDiff = now - lastChange;
+            const daysDiff = timeDiff / (1000 * 3600 * 24); // Difference in days (float)
+
+            if (daysDiff < 31) {
+                const daysRemaining = Math.ceil(31 - daysDiff);
+                // Calculate next available date
+                const nextDate = new Date(lastChange);
+                nextDate.setDate(lastChange.getDate() + 31);
+
+                return res.status(400).json({
+                    success: false,
+                    message: `You can change your username again in ${daysRemaining} day${daysRemaining !== 1 ? 's' : ''}.`,
+                    data: {
+                        nextAvailableDate: nextDate
+                    }
+                });
+            }
+        }
+
+        // Update username and last_username_change
         await promisePool.query(
-            'UPDATE users SET username = ? WHERE id = ?',
+            'UPDATE users SET username = ?, last_username_change = NOW() WHERE id = ?',
             [username, userId]
         );
 
         // Get updated user
         const [users] = await promisePool.query(
-            'SELECT id, email, username FROM users WHERE id = ?',
+            'SELECT id, email, username, last_username_change FROM users WHERE id = ?',
             [userId]
         );
 

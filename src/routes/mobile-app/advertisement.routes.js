@@ -58,6 +58,13 @@ router.get('/view/:id', authenticate, checkSubscription, mobileAdvertisementCont
 router.get('/locations', authenticate, mobileAdvertisementController.getUserLocations);
 
 /**
+ * @route GET /api/v1/mobile-app/advertisements/plans
+ * @desc Get all advertisement plans
+ * @access Private (requires authentication)
+ */
+router.get('/plans', authenticate, mobileAdvertisementController.getAdvertisementPlans);
+
+/**
  * @route POST /api/v1/mobile-app/advertisements
  * @desc Create a new advertisement
  * @access Private (requires authentication)

@@ -251,15 +251,16 @@ exports.createSubscriptionPlan = async (req, res) => {
       stripe_product_id,
       stripe_price_id,
       is_active,
-      sort_order
+      sort_order,
+      plan_type
     } = req.body;
 
     const [result] = await db.query(
       `INSERT INTO subscription_plans
        (name, slug, subheading, description, description_bullets, price, renewal_price,
-        duration_days, features, color_hex, tag, stripe_product_id, stripe_price_id,
+        duration_days, features, color_hex, tag, plan_type, stripe_product_id, stripe_price_id,
         is_active, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         name,
         slug,
@@ -272,6 +273,7 @@ exports.createSubscriptionPlan = async (req, res) => {
         JSON.stringify(features),
         color_hex || '#4CAF50',
         tag || null,
+        plan_type || 'private',
         stripe_product_id || null,
         stripe_price_id || null,
         is_active,
@@ -304,7 +306,8 @@ exports.updateSubscriptionPlan = async (req, res) => {
       stripe_product_id,
       stripe_price_id,
       is_active,
-      sort_order
+      sort_order,
+      plan_type
     } = req.body;
 
     await db.query(
@@ -320,6 +323,7 @@ exports.updateSubscriptionPlan = async (req, res) => {
         features = ?,
         color_hex = ?,
         tag = ?,
+        plan_type = ?,
         stripe_product_id = ?,
         stripe_price_id = ?,
         is_active = ?,
@@ -337,6 +341,7 @@ exports.updateSubscriptionPlan = async (req, res) => {
         JSON.stringify(features),
         color_hex || '#4CAF50',
         tag || null,
+        plan_type || 'private',
         stripe_product_id || null,
         stripe_price_id || null,
         is_active,
@@ -1377,11 +1382,11 @@ exports.getCategories = async (req, res) => {
 
 exports.createCategory = async (req, res) => {
   try {
-    const { name, slug, parent_id, icon, description, is_active, sort_order } = req.body;
+    const { name, slug, parent_id, icon, description, size_type, is_active, sort_order } = req.body;
 
     const [result] = await db.query(
-      'INSERT INTO categories (name, slug, parent_id, icon, description, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [name, slug, parent_id || null, icon || null, description || null, is_active !== undefined ? is_active : true, sort_order || 0]
+      'INSERT INTO categories (name, slug, parent_id, icon, description, size_type, is_active, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+      [name, slug, parent_id || null, icon || null, description || null, size_type || 'none', is_active !== undefined ? is_active : true, sort_order || 0]
     );
 
     res.status(201).json({ success: true, message: 'Category created successfully', id: result.insertId });
@@ -1394,11 +1399,11 @@ exports.createCategory = async (req, res) => {
 exports.updateCategory = async (req, res) => {
   try {
     const { id } = req.params;
-    const { name, slug, parent_id, icon, description, is_active, sort_order } = req.body;
+    const { name, slug, parent_id, icon, description, size_type, is_active, sort_order } = req.body;
 
     await db.query(
-      'UPDATE categories SET name = ?, slug = ?, parent_id = ?, icon = ?, description = ?, is_active = ?, sort_order = ? WHERE id = ?',
-      [name, slug, parent_id || null, icon || null, description || null, is_active, sort_order || 0, id]
+      'UPDATE categories SET name = ?, slug = ?, parent_id = ?, icon = ?, description = ?, size_type = ?, is_active = ?, sort_order = ? WHERE id = ?',
+      [name, slug, parent_id || null, icon || null, description || null, size_type || 'none', is_active, sort_order || 0, id]
     );
 
     res.json({ success: true, message: 'Category updated successfully' });

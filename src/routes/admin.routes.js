@@ -142,4 +142,8 @@ router.use('/faqs', faqRoutes);
 const walletRoutes = require('./admin/wallet.admin.routes');
 router.use('/wallets', walletRoutes);
 
+// ==================== SUGGESTIONS ====================
+const suggestionsController = require('../controllers/mobile-app/suggestions.controller');
+router.get('/suggestions', suggestionsController.getSuggestions);
+
 module.exports = router;

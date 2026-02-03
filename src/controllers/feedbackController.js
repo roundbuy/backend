@@ -116,7 +116,9 @@ const getMyFeedbacks = async (req, res) => {
         const limit = parseInt(req.query.limit) || 50;
         const offset = parseInt(req.query.offset) || 0;
 
-        const feedbacks = await feedbackService.getUserFeedbacks(userId, limit, offset);
+        const status = req.query.status || null;
+
+        const feedbacks = await feedbackService.getUserFeedbacks(userId, limit, offset, status);
         const stats = await feedbackService.getFeedbackStats(userId);
 
         res.json({
@@ -251,11 +253,120 @@ const checkCanGiveFeedback = async (req, res) => {
     }
 };
 
+/**
+ * Get feedbacks given by current user
+ * GET /api/feedbacks/given
+ */
+const getGivenFeedbacks = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const limit = parseInt(req.query.limit) || 50;
+        const offset = parseInt(req.query.offset) || 0;
+
+        const feedbacks = await feedbackService.getGivenFeedbacks(userId, limit, offset);
+
+        res.json({
+            success: true,
+            data: {
+                feedbacks,
+                pagination: {
+                    limit,
+                    offset,
+                    count: feedbacks.length
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Error in getGivenFeedbacks controller:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch given feedbacks',
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Update a feedback (content)
+ * PUT /api/feedbacks/:id
+ */
+const updateFeedback = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const feedbackId = parseInt(req.params.id);
+        const { rating, comment } = req.body;
+
+        if (!rating) {
+            return res.status(400).json({
+                success: false,
+                message: 'Rating is required'
+            });
+        }
+
+        if (rating < 1 || rating > 5) {
+            return res.status(400).json({
+                success: false,
+                message: 'Rating must be between 1 and 5'
+            });
+        }
+
+        await feedbackService.updateFeedback(feedbackId, userId, rating, comment);
+
+        res.json({
+            success: true,
+            message: 'Feedback updated successfully'
+        });
+    } catch (error) {
+        console.error('Error in updateFeedback controller:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to update feedback',
+            error: error.message
+        });
+    }
+};
+
+/**
+ * Update feedback status (approve/reject)
+ * PATCH /api/feedbacks/:id/status
+ */
+const updateFeedbackStatus = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const feedbackId = parseInt(req.params.id);
+        const { status } = req.body;
+
+        if (!status || !['approved', 'rejected'].includes(status)) {
+            return res.status(400).json({
+                success: false,
+                message: 'Invalid status. Must be "approved" or "rejected"'
+            });
+        }
+
+        await feedbackService.updateFeedbackStatus(feedbackId, userId, status);
+
+        res.json({
+            success: true,
+            message: `Feedback ${status} successfully`
+        });
+    } catch (error) {
+        console.error('Error in updateFeedbackStatus controller:', error);
+        res.status(500).json({
+            success: false,
+            message: error.message || 'Failed to update feedback status',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     getEligibleForFeedback,
     createFeedback,
     getMyFeedbacks,
     getUserFeedbacks,
     getFeedbackStats,
-    checkCanGiveFeedback
+    checkCanGiveFeedback,
+    getGivenFeedbacks,
+    updateFeedback,
+    updateFeedbackStatus
 };

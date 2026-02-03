@@ -111,9 +111,12 @@ const demoRoutes = require('./routes/demo.routes');
 const adminResolutionRoutes = require('./routes/admin/resolution.admin.routes');
 const adminNotificationRoutes = require('./routes/admin/notificationRoutes');
 const adminMessagingRoutes = require('./routes/admin/messaging.admin.routes');
+const adminCampaignNotificationRoutes = require('./routes/admin/campaignNotificationRoutes');
+const debugCampaignRoutes = require('./routes/admin/debugCampaignRoutes');
 
 // Mobile notification routes
 const mobileNotificationRoutes = require('./routes/mobile-app/notificationRoutes');
+const mobileCampaignNotificationRoutes = require('./routes/mobile-app/campaignNotificationRoutes');
 
 // Mount routes
 app.use(`/api/${API_VERSION}/auth`, authRoutes);
@@ -127,6 +130,16 @@ app.use(`/api/${API_VERSION}/orders`, orderRoutes);
 app.use(`/api/${API_VERSION}/messages`, messageRoutes);
 app.use(`/api/${API_VERSION}/languages`, languageRoutes);
 app.use(`/api/${API_VERSION}/faqs`, faqRoutes);
+// Admin routes (Specific)
+app.use(`/api/${API_VERSION}/admin/resolution`, adminResolutionRoutes);
+app.use(`/api/${API_VERSION}/admin/notifications`, adminNotificationRoutes);
+app.use(`/api/${API_VERSION}/admin/messaging`, adminMessagingRoutes);
+app.use(`/api/${API_VERSION}/admin/campaign-notifications`, adminCampaignNotificationRoutes);
+app.use(`/api/${API_VERSION}/admin/campaign-notifications`, debugCampaignRoutes); // Debug routes
+app.use(`/api/${API_VERSION}/admin/seller-metrics`, require('./routes/admin/sellerMetrics.admin.routes'));
+app.use(`/api/${API_VERSION}/admin/onboarding`, require('./routes/admin/onboarding.admin.routes'));
+
+// Admin routes (General) - Must come after specific routes
 app.use(`/api/${API_VERSION}/admin`, adminRoutes);
 
 
@@ -155,16 +168,22 @@ app.use(`/api/${API_VERSION}/mobile-app/feedbacks`, mobileFeedbackRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/pickups`, mobilePickupRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/colors`, mobileColorsRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/wallet`, mobileWalletRoutes);
+const platformReviewRoutes = require('./routes/platformReviewRoutes');
+app.use(`/api/${API_VERSION}/mobile-app/reviews`, platformReviewRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/suggestions`, require('./routes/mobile-app/suggestions.routes'));
+app.use(`/api/${API_VERSION}/mobile-app/seller-metrics`, require('./routes/mobile-app/sellerMetrics.routes'));
+app.use(`/api/${API_VERSION}/mobile-app/onboarding`, require('./routes/mobile-app/onboarding.routes'));
 
 
 
-// Admin routes
-app.use(`/api/${API_VERSION}/admin/resolution`, adminResolutionRoutes);
-app.use(`/api/${API_VERSION}/admin/notifications`, adminNotificationRoutes);
-app.use(`/api/${API_VERSION}/admin/messaging`, adminMessagingRoutes);
+// Routes moved up
 
 // Mobile notification routes (under /mobile-app for consistency)
 app.use(`/api/${API_VERSION}/mobile-app/notifications`, mobileNotificationRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/campaign-notifications`, mobileCampaignNotificationRoutes);
+
+// Rewards routes
+app.use(`/api/${API_VERSION}/mobile-app/rewards`, require('./routes/mobile-app/rewards.routes'));
 
 // Demo routes (public, no auth required)
 app.use(`/api/${API_VERSION}/demo`, demoRoutes);

@@ -86,4 +86,11 @@ router.get('/payment-methods', authenticate, mobileSubscriptionController.getSav
  */
 router.get('/stripe-config', mobileSubscriptionController.getStripeConfig);
 
+/**
+ * @route GET /api/v1/mobile-app/subscription/current
+ * @desc Get current user subscription
+ * @access Private (requires authentication)
+ */
+router.get('/current', authenticate, mobileSubscriptionController.getCurrentSubscription);
+
 module.exports = router;

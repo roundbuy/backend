@@ -123,8 +123,8 @@ const createFeedback = async (feedbackData) => {
         // Insert feedback
         const insertQuery = `
       INSERT INTO advertisement_feedbacks 
-      (advertisement_id, offer_id, reviewer_id, reviewed_user_id, rating, comment, transaction_type)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      (advertisement_id, offer_id, reviewer_id, reviewed_user_id, rating, comment, transaction_type, status, is_visible)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 0)
     `;
 
         const [result] = await promisePool.query(insertQuery, [
@@ -159,7 +159,7 @@ const createFeedback = async (feedbackData) => {
 /**
  * Get all feedbacks received by a user
  */
-const getUserFeedbacks = async (userId, limit = 50, offset = 0) => {
+const getUserFeedbacks = async (userId, limit = 50, offset = 0, status = null) => {
     try {
         const query = `
       SELECT 
@@ -167,6 +167,7 @@ const getUserFeedbacks = async (userId, limit = 50, offset = 0) => {
         af.rating,
         af.comment,
         af.transaction_type,
+        af.status,
         af.created_at,
         a.id as advertisement_id,
         a.title as advertisement_title,
@@ -178,18 +179,21 @@ const getUserFeedbacks = async (userId, limit = 50, offset = 0) => {
       INNER JOIN advertisements a ON af.advertisement_id = a.id
       INNER JOIN users reviewer ON af.reviewer_id = reviewer.id
       WHERE af.reviewed_user_id = ?
-        AND af.is_visible = TRUE
+        AND (af.is_visible = TRUE OR af.reviewed_user_id = ?)
+        ${status ? 'AND af.status = ?' : ''}
       ORDER BY af.created_at DESC
       LIMIT ? OFFSET ?
     `;
 
-        const [rows] = await promisePool.query(query, [userId, limit, offset]);
+        const params = status ? [userId, userId, status, limit, offset] : [userId, userId, limit, offset];
+        const [rows] = await promisePool.query(query, params);
 
         return rows.map(row => ({
             id: row.id,
             rating: row.rating,
             comment: row.comment,
             transactionType: row.transaction_type,
+            status: row.status,
             createdAt: row.created_at,
             advertisement: {
                 id: row.advertisement_id,
@@ -204,6 +208,134 @@ const getUserFeedbacks = async (userId, limit = 50, offset = 0) => {
         }));
     } catch (error) {
         console.error('Error in getUserFeedbacks:', error);
+        throw error;
+    }
+};
+
+/**
+ * Get feedbacks given by a user
+ */
+const getGivenFeedbacks = async (userId, limit = 50, offset = 0) => {
+    try {
+        const query = `
+      SELECT 
+        af.id,
+        af.rating,
+        af.comment,
+        af.transaction_type,
+        af.status,
+        af.created_at,
+        af.updated_at,
+        a.id as advertisement_id,
+        a.title as advertisement_title,
+        a.images as advertisement_images,
+        reviewed.id as reviewed_user_id,
+        reviewed.full_name as reviewed_user_name,
+        reviewed.avatar as reviewed_user_avatar
+      FROM advertisement_feedbacks af
+      INNER JOIN advertisements a ON af.advertisement_id = a.id
+      INNER JOIN users reviewed ON af.reviewed_user_id = reviewed.id
+      WHERE af.reviewer_id = ?
+      ORDER BY af.created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+
+        const [rows] = await promisePool.query(query, [userId, limit, offset]);
+
+        return rows.map(row => ({
+            id: row.id,
+            rating: row.rating,
+            comment: row.comment,
+            transactionType: row.transaction_type,
+            status: row.status,
+            createdAt: row.created_at,
+            updatedAt: row.updated_at,
+            advertisement: {
+                id: row.advertisement_id,
+                title: row.advertisement_title,
+                images: row.advertisement_images ? JSON.parse(row.advertisement_images) : []
+            },
+            reviewedUser: {
+                id: row.reviewed_user_id,
+                name: row.reviewed_user_name,
+                avatar: row.reviewed_user_avatar
+            }
+        }));
+    } catch (error) {
+        console.error('Error in getGivenFeedbacks:', error);
+        throw error;
+    }
+};
+
+/**
+ * Update feedback content (only within 30 days)
+ */
+const updateFeedback = async (feedbackId, userId, rating, comment) => {
+    try {
+        // Check existence and ownership
+        const [feedback] = await promisePool.query(
+            'SELECT * FROM advertisement_feedbacks WHERE id = ? AND reviewer_id = ?',
+            [feedbackId, userId]
+        );
+
+        if (feedback.length === 0) {
+            throw new Error('Feedback not found or access denied');
+        }
+
+        const createdAt = new Date(feedback[0].created_at);
+        const now = new Date();
+        const diffDays = Math.ceil(Math.abs(now - createdAt) / (1000 * 60 * 60 * 24));
+
+        if (diffDays > 30) {
+            throw new Error('Feedback cannot be edited after 30 days');
+        }
+
+        // Update
+        await promisePool.query(
+            'UPDATE advertisement_feedbacks SET rating = ?, comment = ? WHERE id = ?',
+            [rating, comment, feedbackId]
+        );
+
+        // Recalculate rating for the reviewed user
+        await updateUserRating(feedback[0].reviewed_user_id);
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error in updateFeedback:', error);
+        throw error;
+    }
+};
+
+/**
+ * Update feedback status (approve/reject)
+ */
+const updateFeedbackStatus = async (feedbackId, userId, status) => {
+    try {
+        // Verify the user is the one who received the feedback
+        const [feedback] = await promisePool.query(
+            'SELECT * FROM advertisement_feedbacks WHERE id = ? AND reviewed_user_id = ?',
+            [feedbackId, userId]
+        );
+
+        if (feedback.length === 0) {
+            throw new Error('Feedback not found or access denied');
+        }
+
+        if (!['approved', 'rejected'].includes(status)) {
+            throw new Error('Invalid status');
+        }
+
+        await promisePool.query(
+            'UPDATE advertisement_feedbacks SET status = ?, is_visible = ? WHERE id = ?',
+            [status, status === 'approved' ? 1 : 0, feedbackId]
+        );
+
+        // Recalculate stats only if visibility changed or status changed to/from approved
+        await updateUserRating(userId);
+
+        return { success: true };
+    } catch (error) {
+        console.error('Error in updateFeedbackStatus:', error);
         throw error;
     }
 };
@@ -361,5 +493,8 @@ module.exports = {
     getUserFeedbacks,
     getFeedbackStats,
     updateUserRating,
-    canGiveFeedback
+    canGiveFeedback,
+    getGivenFeedbacks,
+    updateFeedback,
+    updateFeedbackStatus
 };

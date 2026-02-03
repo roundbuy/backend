@@ -235,6 +235,7 @@ CREATE TABLE users (
     country_code VARCHAR(3) DEFAULT NULL COMMENT 'User selected country',
     currency_code VARCHAR(3) DEFAULT NULL COMMENT 'User selected currency',
     last_login DATETIME,
+    last_username_change DATETIME DEFAULT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_email (email),

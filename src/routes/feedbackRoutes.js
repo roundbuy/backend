@@ -26,4 +26,13 @@ router.get('/stats/:userId', authenticate, feedbackController.getFeedbackStats);
 // Check if user can give feedback for a specific advertisement
 router.get('/can-give/:advertisementId', authenticate, feedbackController.checkCanGiveFeedback);
 
+// Get feedbacks given by current user
+router.get('/given', authenticate, feedbackController.getGivenFeedbacks);
+
+// Update a feedback (content)
+router.put('/:id', authenticate, feedbackController.updateFeedback);
+
+// Update feedback status (approve/reject)
+router.patch('/:id/status', authenticate, feedbackController.updateFeedbackStatus);
+
 module.exports = router;

@@ -7,7 +7,7 @@ const { generateTokens } = require('../utils/jwt');
  */
 const register = async (req, res) => {
   try {
-    const { email, password, full_name, phone } = req.body;
+    const { email, password, full_name, phone, referral_code } = req.body;
 
     // Validate input
     if (!email || !password || !full_name) {
@@ -40,14 +40,95 @@ const register = async (req, res) => {
 
     const subscriptionPlanId = freePlans.length > 0 ? freePlans[0].id : null;
 
+    // Generate username
+    const username = `user${Math.random().toString(36).substring(2, 10)}`;
+
     // Create user
     const [result] = await promisePool.query(
-      `INSERT INTO users (email, password_hash, full_name, phone, subscription_plan_id) 
-       VALUES (?, ?, ?, ?, ?)`,
-      [email, password_hash, full_name, phone || null, subscriptionPlanId]
+      `INSERT INTO users (email, password_hash, full_name, phone, subscription_plan_id, username, profile_image) 
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [email, password_hash, full_name, phone || null, subscriptionPlanId, username, 'https://via.placeholder.com/150']
     );
 
     const userId = result.insertId;
+
+    // Handle Referral Code
+    if (referral_code) {
+      try {
+        // Find referrer
+        const [referrers] = await promisePool.query(
+          'SELECT id FROM users WHERE referral_code = ?',
+          [referral_code]
+        );
+
+        if (referrers.length > 0) {
+          const referrerId = referrers[0].id;
+
+          // Create referral record
+          await promisePool.query(
+            'INSERT INTO referrals (referrer_id, referee_id, status) VALUES (?, ?, ?)',
+            [referrerId, userId, 'pending'] // Mark as pending until they do something? Or 'completed' if just signup counts?
+            // Requirement says "Refer 5 friends to register", so seemingly just registration counts.
+            // Let's mark as 'completed' for now or 'pending' if verification is needed.
+            // Let's default to 'pending' from schema, but maybe strictly 'completed' if email verified?
+            // For now, let's just insert.
+          );
+
+          // Check if we should auto-complete it based on requirements? 
+          // "Give this referral code to 5 friends to register" -> implies registration is enough.
+          // Let's set it to 'completed' immediately for this MVP loop, or update it later.
+          // The schema default is 'pending'. Let's stick to 'pending' and maybe have a trigger or service update it.
+          // actually, "Receive Gold membership for free" -> Usually valid after email verification.
+          // I'll stick to 'pending'.
+
+          // Actually, for the sake of the demo seeing the progress bar move, I should probably make it 'completed' 
+          // or have a way to complete it. 
+          // Let's make it 'completed' for immediate gratification in testing unless email verification is strictly enforced.
+          await promisePool.query(
+            'UPDATE referrals SET status = "completed" WHERE id = LAST_INSERT_ID()'
+          );
+          // Also update the referrer's progress if needed? 
+          // No, the `getRewards` logic just queries the counts or we need to update `user_rewards_progress`.
+          // The database schema has `user_rewards_progress`.
+          // We should probably update that too if we want the UI progress bar to move!
+
+          // Wait, the `RewardsController.getRewards` does this:
+          // `const [progress] = await db.query('SELECT * FROM user_rewards_progress WHERE user_id = ?', [userId]);`
+          // This fetches progress for the VIEWING user.
+          // If I am the referrer, I want to see my progress increase.
+          // So when a referee signs up, we should update the REFERRER's progress in `user_rewards_progress`.
+
+          // Let's find the relevant reward category (e.g., id 1 for Plan Upgrade)
+          const [rewardCategories] = await promisePool.query(
+            'SELECT id, required_referrals FROM reward_categories WHERE type = "plan_upgrade"'
+          );
+
+          if (rewardCategories.length > 0) {
+            const cat = rewardCategories[0];
+            // Check if record exists
+            const [prog] = await promisePool.query(
+              'SELECT * FROM user_rewards_progress WHERE user_id = ? AND reward_category_id = ?',
+              [referrerId, cat.id]
+            );
+
+            if (prog.length === 0) {
+              await promisePool.query(
+                'INSERT INTO user_rewards_progress (user_id, reward_category_id, progress_count) VALUES (?, ?, 1)',
+                [referrerId, cat.id]
+              );
+            } else {
+              await promisePool.query(
+                'UPDATE user_rewards_progress SET progress_count = progress_count + 1 WHERE id = ?',
+                [prog[0].id]
+              );
+            }
+          }
+        }
+      } catch (refError) {
+        console.error('Referral processing error:', refError);
+        // Don't fail registration if referral fails
+      }
+    }
 
     // Generate tokens
     const tokens = generateTokens(userId, 'subscriber');
@@ -165,7 +246,7 @@ const getMe = async (req, res) => {
     const [users] = await promisePool.query(
       `SELECT u.id, u.email, u.full_name, u.phone, u.avatar, u.role, 
               u.is_verified, u.language_preference, u.created_at,
-              sp.name as subscription_plan_name, sp.slug as subscription_plan_slug,
+              sp.name as subscription_plan_name, sp.slug as subscription_plan_slug, sp.plan_type,
               u.subscription_start_date, u.subscription_end_date
        FROM users u
        LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id

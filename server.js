@@ -23,6 +23,10 @@ const startServer = async () => {
     const notificationScheduler = require('./src/services/notificationScheduler.service');
     notificationScheduler.startScheduler();
 
+    // Start campaign notification scheduler
+    const { startCampaignScheduler } = require('./src/utils/campaignScheduler');
+    startCampaignScheduler();
+
     // Start listening
     const server = app.listen(PORT, () => {
       console.log(`\n=================================`);

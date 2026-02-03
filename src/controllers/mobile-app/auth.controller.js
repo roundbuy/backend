@@ -271,7 +271,7 @@ const login = async (req, res) => {
     // Get user
     const [users] = await promisePool.query(
       `SELECT id, email, username, avatar, password_hash, full_name, role, is_active, is_verified, language_preference,
-              subscription_plan_id, subscription_start_date, subscription_end_date
+              subscription_plan_id, subscription_start_date, subscription_end_date, last_username_change, referral_code
        FROM users WHERE email = ?`,
       [email]
     );
@@ -355,7 +355,9 @@ const login = async (req, res) => {
             requires_subscription: true,
             subscription_plan_id: user.subscription_plan_id,
             subscription_start_date: user.subscription_start_date,
-            subscription_end_date: user.subscription_end_date
+            subscription_end_date: user.subscription_end_date,
+            last_username_change: user.last_username_change,
+            referral_code: user.referral_code
           },
           ...tokens,
           requires_subscription: true
@@ -380,7 +382,9 @@ const login = async (req, res) => {
           requires_subscription: !hasSubscription,
           subscription_plan_id: user.subscription_plan_id,
           subscription_start_date: user.subscription_start_date,
-          subscription_end_date: user.subscription_end_date
+          subscription_end_date: user.subscription_end_date,
+          last_username_change: user.last_username_change,
+          referral_code: user.referral_code
         },
         ...tokens,
         requires_subscription: !hasSubscription

@@ -39,7 +39,7 @@ const getPlans = async (req, res) => {
     // Get all active subscription plans
     const [plans] = await promisePool.query(
       `SELECT id, name, slug, subheading, description, description_bullets,
-              duration_days, features, color_hex, tag, renewal_price, sort_order
+              duration_days, features, color_hex, tag, plan_type, renewal_price, sort_order
        FROM subscription_plans
        WHERE is_active = TRUE
        ORDER BY sort_order ASC`
@@ -109,6 +109,7 @@ const getPlans = async (req, res) => {
         features: plan.features ? (typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features) : {},
         color: plan.color_hex || '#4CAF50',
         tag: plan.tag, // 'best', 'popular', 'recommended', or null
+        plan_type: plan.plan_type,
         prices: prices,
         target_currency: {
           code: targetCurrency,
@@ -176,7 +177,7 @@ const getPlanDetails = async (req, res) => {
 
     // Get plan
     const [plans] = await promisePool.query(
-      'SELECT id, name, slug, description, duration_days, features FROM subscription_plans WHERE id = ? AND is_active = TRUE',
+      'SELECT id, name, slug, description, duration_days, features, plan_type FROM subscription_plans WHERE id = ? AND is_active = TRUE',
       [planId]
     );
 
@@ -230,6 +231,7 @@ const getPlanDetails = async (req, res) => {
           slug: plan.slug,
           description: plan.description,
           duration_days: plan.duration_days,
+          plan_type: plan.plan_type,
           features: plan.features ? (typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features) : {},
           prices: planPrices.map(p => ({
             currency_code: p.code,
@@ -282,7 +284,7 @@ const createPaymentIntent = async (req, res) => {
 
     // Get plan and price
     const [plans] = await promisePool.query(
-      `SELECT sp.id, sp.name, sp.duration_days, pp.price, pp.tax_rate, c.code as currency_code
+      `SELECT sp.id, sp.name, sp.duration_days, sp.plan_type, pp.price, pp.tax_rate, c.code as currency_code
        FROM subscription_plans sp
        JOIN plan_prices pp ON sp.id = pp.subscription_plan_id
        JOIN currencies c ON pp.currency_id = c.id
@@ -301,7 +303,7 @@ const createPaymentIntent = async (req, res) => {
     const price = parseFloat(plan.price);
     const taxRate = parseFloat(plan.tax_rate);
     const taxAmount = (price * taxRate) / 100;
-    const totalAmount = price + taxAmount;
+    let totalAmount = price + taxAmount;
 
     // Get user details
     const [users] = await promisePool.query(
@@ -319,24 +321,68 @@ const createPaymentIntent = async (req, res) => {
     const user = users[0];
     const stripe = await getStripeInstance();
 
-    // Create or get Stripe customer
-    let stripeCustomerId = null;
-    const [existingCustomers] = await promisePool.query(
-      'SELECT stripe_customer_id FROM user_subscriptions WHERE user_id = ? AND stripe_customer_id IS NOT NULL LIMIT 1',
+    // Check if user already has an active subscription for compatibility and pro-ration
+    const [existingSubs] = await promisePool.query(
+      `SELECT us.id, us.start_date, us.end_date, us.amount_paid, sp.plan_type, us.stripe_customer_id
+       FROM user_subscriptions us
+       JOIN subscription_plans sp ON us.subscription_plan_id = sp.id
+       WHERE us.user_id = ? AND us.status = 'active' AND us.end_date > NOW()
+       LIMIT 1`,
       [userId]
     );
 
-    if (existingCustomers.length > 0) {
-      stripeCustomerId = existingCustomers[0].stripe_customer_id;
-    } else {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        name: user.full_name,
-        metadata: {
-          user_id: userId
+    let stripeCustomerId = null;
+    let discountAmount = 0;
+
+    if (existingSubs.length > 0) {
+      const currentSub = existingSubs[0];
+      stripeCustomerId = currentSub.stripe_customer_id;
+
+      // Compatibility Check
+      if (currentSub.plan_type && plan.plan_type && currentSub.plan_type !== plan.plan_type) {
+        // allow upgrade if one is null/undefined? assuming strict for now if both exist
+        return res.status(400).json({
+          success: false,
+          message: `You cannot switch from a ${currentSub.plan_type} plan to a ${plan.plan_type} plan.`
+        });
+      }
+
+      // Pro-ration Calculation
+      const startDate = new Date(currentSub.start_date);
+      const endDate = new Date(currentSub.end_date);
+      const now = new Date();
+
+      if (now < endDate) {
+        const totalDuration = endDate.getTime() - startDate.getTime();
+        const remainingDuration = endDate.getTime() - now.getTime();
+
+        if (totalDuration > 0 && remainingDuration > 0) {
+          const fraction = remainingDuration / totalDuration;
+          const amountPaid = parseFloat(currentSub.amount_paid || 0);
+          discountAmount = amountPaid * fraction;
         }
-      });
-      stripeCustomerId = customer.id;
+      }
+    } else {
+      // If no active sub, fetch customer ID from DB history or create new
+      const [existingCustomers] = await promisePool.query(
+        'SELECT stripe_customer_id FROM user_subscriptions WHERE user_id = ? AND stripe_customer_id IS NOT NULL LIMIT 1',
+        [userId]
+      );
+      if (existingCustomers.length > 0) {
+        stripeCustomerId = existingCustomers[0].stripe_customer_id;
+      } else {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: user.full_name,
+          metadata: { user_id: userId }
+        });
+        stripeCustomerId = customer.id;
+      }
+    }
+
+    // Apply Discount
+    if (discountAmount > 0) {
+      totalAmount = Math.max(0, totalAmount - discountAmount);
     }
 
     // Create payment intent
@@ -351,7 +397,9 @@ const createPaymentIntent = async (req, res) => {
         user_id: userId,
         plan_id: plan_id,
         plan_name: plan.name,
-        currency: currency_code
+        plan_type: plan.plan_type,
+        currency: currency_code,
+        discount_applied: discountAmount.toFixed(2)
       }
     });
 
@@ -361,6 +409,8 @@ const createPaymentIntent = async (req, res) => {
         client_secret: paymentIntent.client_secret,
         payment_intent_id: paymentIntent.id,
         amount: totalAmount,
+        original_price: price + taxAmount,
+        discount: discountAmount,
         currency: currency_code,
         customer_id: stripeCustomerId
       }
@@ -394,7 +444,7 @@ const purchasePlan = async (req, res) => {
 
     // Get plan and price
     const [plans] = await promisePool.query(
-      `SELECT sp.id, sp.name, sp.duration_days, pp.price, pp.tax_rate, c.code as currency_code
+      `SELECT sp.id, sp.name, sp.duration_days, sp.plan_type, pp.price, pp.tax_rate, c.code as currency_code
        FROM subscription_plans sp
        JOIN plan_prices pp ON sp.id = pp.subscription_plan_id
        JOIN currencies c ON pp.currency_id = c.id
@@ -413,20 +463,7 @@ const purchasePlan = async (req, res) => {
     const price = parseFloat(plan.price);
     const taxRate = parseFloat(plan.tax_rate);
     const taxAmount = (price * taxRate) / 100;
-    const totalAmount = price + taxAmount;
-
-    // Check if user already has an active subscription
-    const [existingSubs] = await promisePool.query(
-      'SELECT id FROM user_subscriptions WHERE user_id = ? AND status = "active"',
-      [userId]
-    );
-
-    if (existingSubs.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'User already has an active subscription'
-      });
-    }
+    let totalAmount = price + taxAmount;
 
     // Get user details for Stripe customer
     const [users] = await promisePool.query(
@@ -444,24 +481,74 @@ const purchasePlan = async (req, res) => {
     const user = users[0];
     const stripe = await getStripeInstance();
 
-    // Create or get Stripe customer
-    let stripeCustomerId = null;
-    const [existingCustomers] = await promisePool.query(
-      'SELECT stripe_customer_id FROM user_subscriptions WHERE user_id = ? AND stripe_customer_id IS NOT NULL LIMIT 1',
+    // Check if user already has an active subscription for compatibility and pro-ration
+    const [existingSubs] = await promisePool.query(
+      `SELECT us.id, us.start_date, us.end_date, us.amount_paid, us.subscription_plan_id, sp.plan_type, us.stripe_customer_id
+       FROM user_subscriptions us
+       JOIN subscription_plans sp ON us.subscription_plan_id = sp.id
+       WHERE us.user_id = ? AND us.status = 'active' AND us.end_date > NOW()
+       LIMIT 1`,
       [userId]
     );
 
-    if (existingCustomers.length > 0) {
-      stripeCustomerId = existingCustomers[0].stripe_customer_id;
-    } else {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        name: user.full_name,
-        metadata: {
-          user_id: userId
+    let stripeCustomerId = null;
+    let discountAmount = 0;
+
+    if (existingSubs.length > 0) {
+      const currentSub = existingSubs[0];
+      stripeCustomerId = currentSub.stripe_customer_id;
+
+      // Compatibility Check
+      if (currentSub.plan_type && plan.plan_type && currentSub.plan_type !== plan.plan_type) {
+        return res.status(400).json({
+          success: false,
+          message: `You cannot switch from a ${currentSub.plan_type} plan to a ${plan.plan_type} plan.`
+        });
+      }
+
+      // Pro-ration Calculation
+      const startDate = new Date(currentSub.start_date);
+      const endDate = new Date(currentSub.end_date);
+      const now = new Date();
+
+      if (now < endDate) {
+        const totalDuration = endDate.getTime() - startDate.getTime();
+        const remainingDuration = endDate.getTime() - now.getTime();
+
+        if (totalDuration > 0 && remainingDuration > 0) {
+          const fraction = remainingDuration / totalDuration;
+          const amountPaid = parseFloat(currentSub.amount_paid || 0);
+          discountAmount = amountPaid * fraction;
         }
-      });
-      stripeCustomerId = customer.id;
+      }
+
+      console.log(`User ${userId} upgrading from plan ${currentSub.subscription_plan_id} to plan ${plan_id}`);
+
+      // Deactivate the existing subscription
+      await promisePool.query(
+        'UPDATE user_subscriptions SET status = "cancelled", updated_at = NOW() WHERE id = ?',
+        [currentSub.id]
+      );
+    } else {
+      const [existingCustomers] = await promisePool.query(
+        'SELECT stripe_customer_id FROM user_subscriptions WHERE user_id = ? AND stripe_customer_id IS NOT NULL LIMIT 1',
+        [userId]
+      );
+      if (existingCustomers.length > 0) {
+        stripeCustomerId = existingCustomers[0].stripe_customer_id;
+      } else {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: user.full_name,
+          metadata: { user_id: userId }
+        });
+        stripeCustomerId = customer.id;
+      }
+    }
+
+    // Apply Discount
+    if (discountAmount > 0) {
+      totalAmount = Math.max(0, totalAmount - discountAmount);
     }
 
     // Create payment intent with Stripe
@@ -478,7 +565,9 @@ const purchasePlan = async (req, res) => {
         user_id: userId,
         plan_id: plan_id,
         plan_name: plan.name,
-        currency: currency_code
+        plan_type: plan.plan_type,
+        currency: currency_code,
+        discount_applied: discountAmount.toFixed(2)
       }
     });
 
@@ -902,6 +991,64 @@ const createPaymentMethod = async (req, res) => {
   }
 };
 
+/**
+ * Get current user subscription
+ * GET /api/v1/mobile-app/subscription/current
+ */
+const getCurrentSubscription = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get current active subscription
+    const [subscriptions] = await promisePool.query(
+      `SELECT us.id, us.subscription_plan_id, us.start_date, us.end_date, 
+              us.status, us.amount_paid, us.currency_code, us.auto_renew,
+              sp.name as plan_name, sp.slug as plan_slug, sp.color_hex as plan_color, sp.plan_type
+       FROM user_subscriptions us
+       JOIN subscription_plans sp ON us.subscription_plan_id = sp.id
+       WHERE us.user_id = ? AND us.status = 'active' AND us.end_date > NOW()
+       ORDER BY us.end_date DESC
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (subscriptions.length === 0) {
+      return res.json({
+        success: true,
+        data: null,
+        message: 'No active subscription found'
+      });
+    }
+
+    const subscription = subscriptions[0];
+
+    res.json({
+      success: true,
+      data: {
+        id: subscription.id,
+        plan_id: subscription.subscription_plan_id,
+        plan_name: subscription.plan_name,
+        plan_slug: subscription.plan_slug,
+        plan_color: subscription.plan_color,
+        plan_type: subscription.plan_type,
+        start_date: subscription.start_date,
+        end_date: subscription.end_date,
+        status: subscription.status,
+        amount_paid: parseFloat(subscription.amount_paid),
+        currency_code: subscription.currency_code,
+        auto_renew: subscription.auto_renew
+      }
+    });
+  } catch (error) {
+    console.error('Get current subscription error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching current subscription',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getPlans,
   getPlanDetails,
@@ -909,6 +1056,7 @@ module.exports = {
   createPaymentMethod,
   purchasePlan,
   activateFreePlan,
+  getCurrentSubscription,
   getTransactionStatus,
   getSavedPaymentMethods,
   getStripeConfig

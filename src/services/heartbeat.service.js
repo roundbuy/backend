@@ -83,19 +83,73 @@ async function checkForNewNotifications(userId, lastCheckAt = null) {
             lastCheckAt = new Date(Date.now() - 60 * 60 * 1000);
         }
 
+        // AUTO-PROCESS PENDING CAMPAIGN TRIGGERS FOR THIS USER
+        const campaignTriggerService = require('./campaignTrigger.service');
+        const [pendingTriggers] = await promisePool.execute(
+            `SELECT id FROM campaign_notification_triggers 
+             WHERE user_id = ? AND trigger_status = 'pending' 
+             AND scheduled_at <= NOW()`,
+            [userId]
+        );
+
+        if (pendingTriggers.length > 0) {
+            console.log(`⚡ Auto-processing ${pendingTriggers.length} pending trigger(s) for user ${userId}`);
+            for (const trigger of pendingTriggers) {
+                try {
+                    await campaignTriggerService.processTrigger(trigger.id);
+                } catch (error) {
+                    console.error(`Failed to auto-process trigger ${trigger.id}:`, error.message);
+                }
+            }
+        }
+
         // Get new notifications since last check
         const notifications = await userNotificationService.getNewNotificationsSinceLastCheck(
             userId,
             lastCheckAt
         );
 
+        // Get new campaign notifications since last check
+        const [campaignNotifications] = await promisePool.execute(
+            `SELECT 
+                ucn.*,
+                cn.*,
+                ucn.id as user_notification_id
+            FROM user_campaign_notifications ucn
+            JOIN campaign_notifications cn ON ucn.campaign_notification_id = cn.id
+            WHERE ucn.user_id = ?
+            AND ucn.delivered_at > ?
+            AND cn.is_active = TRUE
+            ORDER BY ucn.delivered_at DESC`,
+            [userId, lastCheckAt]
+        );
+
+        // Parse JSON fields in campaign notifications
+        const parsedCampaignNotifications = campaignNotifications.map(notification => {
+            const jsonFields = [
+                'expanded_button_1_action', 'expanded_button_2_action',
+                'fullscreen_primary_button_action', 'fullscreen_secondary_button_action'
+            ];
+            for (const field of jsonFields) {
+                if (notification[field]) {
+                    try {
+                        notification[field] = JSON.parse(notification[field]);
+                    } catch (e) {
+                        console.error(`Failed to parse ${field}:`, e);
+                    }
+                }
+            }
+            return notification;
+        });
+
         // Update heartbeat
         await updateHeartbeat(userId, null);
 
         return {
-            hasNew: notifications.length > 0,
-            count: notifications.length,
+            hasNew: notifications.length > 0 || campaignNotifications.length > 0,
+            count: notifications.length + campaignNotifications.length,
             notifications: notifications,
+            campaignNotifications: parsedCampaignNotifications,
             lastCheckAt: new Date()
         };
     } catch (error) {

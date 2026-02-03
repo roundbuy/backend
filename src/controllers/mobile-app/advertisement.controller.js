@@ -10,7 +10,7 @@ const getFilters = async (req, res) => {
   try {
     // Get categories with requires_size field
     const [categories] = await promisePool.query(
-      'SELECT id, name, slug, requires_size FROM categories WHERE parent_id IS NULL AND is_active = TRUE ORDER BY sort_order'
+      'SELECT id, name, slug, size_type FROM categories WHERE parent_id IS NULL AND is_active = TRUE ORDER BY sort_order'
     );
 
     // Get subcategories for each category
@@ -59,7 +59,8 @@ const getFilters = async (req, res) => {
           id: cat.id,
           name: cat.name,
           slug: cat.slug,
-          requires_size: cat.requires_size,
+          slug: cat.slug,
+          size_type: cat.size_type,
           subcategories: cat.subcategories && cat.subcategories[0]?.id ? cat.subcategories : []
         })),
         activities,
@@ -114,6 +115,43 @@ const getUserLocations = async (req, res) => {
 };
 
 /**
+ * Get advertisement plans
+ * GET /api/v1/mobile-app/advertisements/plans
+ */
+const getAdvertisementPlans = async (req, res) => {
+  try {
+    const [plans] = await promisePool.query(
+      'SELECT id, name, slug, plan_type, priority_level, description, price, base_price, discounted_price, duration_days, duration_label, features, distance_boost_km, allows_distance_boost FROM advertisement_plans WHERE is_active = TRUE ORDER BY sort_order ASC, price ASC'
+    );
+
+    const [distancePlans] = await promisePool.query(
+      'SELECT id, name, slug, description, distance_km, is_unlimited, base_price, discounted_price FROM distance_boost_plans WHERE is_active = TRUE ORDER BY sort_order ASC'
+    );
+
+    // Parse features if they are JSON strings
+    const formattedPlans = plans.map(plan => ({
+      ...plan,
+      features: typeof plan.features === 'string' ? JSON.parse(plan.features) : plan.features
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        plans: formattedPlans,
+        distance_plans: distancePlans
+      }
+    });
+  } catch (error) {
+    console.error('Get advertisement plans error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error fetching advertisement plans',
+      error: error.message
+    });
+  }
+};
+
+/**
  * Create a new advertisement
  * POST /api/v1/mobile-app/advertisements
  */
@@ -134,7 +172,11 @@ const createAdvertisement = async (req, res) => {
       age_id,
       gender_id,
       size_id,
-      color_id
+      color_id,
+      dim_length,
+      dim_width,
+      dim_height,
+      dim_unit
     } = req.body;
 
     // Validate required fields
@@ -209,8 +251,8 @@ const createAdvertisement = async (req, res) => {
       `INSERT INTO advertisements
        (user_id, title, description, images, category_id, subcategory_id, location_id,
         price, display_duration_days, activity_id, condition_id, age_id, gender_id,
-        size_id, color_id, status, start_date, end_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'published', NOW(), ?)`,
+        size_id, color_id, dim_length, dim_width, dim_height, dim_unit, status, start_date, end_date)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         title,
@@ -227,7 +269,11 @@ const createAdvertisement = async (req, res) => {
         gender_id || null,
         size_id || null,
         color_id || null,
-        endDate
+        dim_length || null,
+        dim_width || null,
+        dim_height || null,
+        dim_unit || 'cm',
+        'published', new Date(), endDate
       ]
     );
 
@@ -328,7 +374,11 @@ const updateAdvertisement = async (req, res) => {
       age_id,
       gender_id,
       size_id,
-      color_id
+      color_id,
+      dim_length,
+      dim_width,
+      dim_height,
+      dim_unit
     } = req.body;
 
     // Check if advertisement exists and belongs to user
@@ -441,6 +491,22 @@ const updateAdvertisement = async (req, res) => {
     if (endDate !== undefined) {
       updates.push('end_date = ?');
       params.push(endDate);
+    }
+    if (dim_length !== undefined) {
+      updates.push('dim_length = ?');
+      params.push(dim_length);
+    }
+    if (dim_width !== undefined) {
+      updates.push('dim_width = ?');
+      params.push(dim_width);
+    }
+    if (dim_height !== undefined) {
+      updates.push('dim_height = ?');
+      params.push(dim_height);
+    }
+    if (dim_unit !== undefined) {
+      updates.push('dim_unit = ?');
+      params.push(dim_unit);
     }
 
     // Allow status changes between draft and published
@@ -559,7 +625,7 @@ const getUserAdvertisements = async (req, res) => {
     res.json({
       success: true,
       data: {
-        advertisements: ads,
+        advertisements: processedAds,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -614,10 +680,23 @@ const getAdvertisement = async (req, res) => {
       });
     }
 
+    // Fetch badges separately
+    const [badges] = await promisePool.query(
+      `SELECT badge_type as type, badge_level as level 
+       FROM product_badges 
+       WHERE advertisement_id = ? AND is_active = 1`,
+      [id]
+    );
+
+    console.log('Badges:', badges);
+
     res.json({
       success: true,
       data: {
-        advertisement: ads[0]
+        advertisement: {
+          ...ads[0],
+          badges: badges || []
+        }
       }
     });
   } catch (error) {
@@ -830,6 +909,39 @@ const browseAdvertisements = async (req, res) => {
 
     const [ads] = await promisePool.query(query, params);
 
+    // Parse badges if they are strings
+    // Fetch badges separately for collected ad IDs
+    let processedAds = [...ads];
+    if (ads.length > 0) {
+      const adIds = ads.map(ad => ad.id);
+
+      // Fetch badges for all ads in the list
+      const badgesQuery = `SELECT advertisement_id, badge_type as type, badge_level as level 
+                           FROM product_badges 
+                           WHERE advertisement_id IN (?) AND is_active = TRUE`;
+      const [badges] = await promisePool.query(badgesQuery, [adIds]);
+
+      // Group badges by advertisement_id
+      const badgesMap = {};
+      badges.forEach(b => {
+        if (!badgesMap[b.advertisement_id]) {
+          badgesMap[b.advertisement_id] = [];
+        }
+        badgesMap[b.advertisement_id].push({ type: b.type, level: b.level });
+      });
+
+      // Assign badges to ads
+      processedAds = ads.map(ad => ({
+        ...ad,
+        badges: badgesMap[ad.id] || []
+      }));
+    }
+
+    if (processedAds.length > 0) {
+      console.log('📦 First Ad Badges Debug:', processedAds[0].badges);
+      console.log('📄 Raw Badges:', ads[0].badges);
+    }
+
     // Get total count (without distance filter for simplicity)
     const countQuery = `SELECT COUNT(*) as total FROM advertisements a ${whereClause}`;
     const [countResult] = await promisePool.query(
@@ -843,7 +955,7 @@ const browseAdvertisements = async (req, res) => {
     res.json({
       success: true,
       data: {
-        advertisements: ads.map(ad => ({
+        advertisements: processedAds.map(ad => ({
           ...ad,
           images: ad.images ? JSON.parse(ad.images) : [],
           distance: ad.distance ? parseFloat(ad.distance).toFixed(2) : null
@@ -937,7 +1049,9 @@ const getAdvertisementPublicView = async (req, res) => {
              ag.name as age_name, gend.name as gender_name,
              sz.name as size_name, col.name as color_name, col.hex_code,
              u.id as seller_id, u.full_name as seller_name, u.avatar as seller_avatar,
-             u.created_at as seller_member_since
+             u.created_at as seller_member_since, u.username,
+             sp.name as seller_plan_name, sp.slug as seller_plan_slug, 
+             sp.plan_type as seller_plan_type, sp.color_hex as seller_plan_color
        FROM advertisements a
        LEFT JOIN categories c ON a.category_id = c.id
        LEFT JOIN categories sc ON a.subcategory_id = sc.id
@@ -949,6 +1063,7 @@ const getAdvertisementPublicView = async (req, res) => {
        LEFT JOIN ad_sizes sz ON a.size_id = sz.id
        LEFT JOIN ad_colors col ON a.color_id = col.id
        LEFT JOIN users u ON a.user_id = u.id
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
        WHERE a.id = ? AND a.status = 'published'`,
       [id]
     );
@@ -961,6 +1076,14 @@ const getAdvertisementPublicView = async (req, res) => {
     }
 
     const ad = ads[0];
+
+    // Fetch badges separately
+    const [badges] = await promisePool.query(
+      `SELECT badge_type as type, badge_level as level 
+       FROM product_badges 
+       WHERE advertisement_id = ? AND is_active = 1`,
+      [id]
+    );
 
     // Increment view count
     await promisePool.query(
@@ -992,13 +1115,21 @@ const getAdvertisementPublicView = async (req, res) => {
           ...ad,
           images: ad.images ? JSON.parse(ad.images) : [],
           is_favorited: isFavorited,
+          badges: badges || [],
           seller: {
             id: ad.seller_id,
+            username: ad.username,
             name: ad.seller_name,
             avatar: ad.seller_avatar,
             member_since: ad.seller_member_since,
             average_rating: sellerRating[0].average_rating || 0,
-            total_reviews: sellerRating[0].total_reviews || 0
+            total_reviews: sellerRating[0].total_reviews || 0,
+            membership: ad.seller_plan_slug ? {
+              name: ad.seller_plan_name,
+              slug: ad.seller_plan_slug,
+              type: ad.seller_plan_type,
+              color: ad.seller_plan_color
+            } : null
           }
         }
       }
@@ -1023,5 +1154,6 @@ module.exports = {
   deleteAdvertisement,
   browseAdvertisements,
   getFeaturedAdvertisements,
-  getAdvertisementPublicView
+  getAdvertisementPublicView,
+  getAdvertisementPlans
 };
