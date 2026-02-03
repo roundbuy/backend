@@ -613,6 +613,36 @@ const getUserAdvertisements = async (req, res) => {
       [...params, parseInt(limit), offset]
     );
 
+    // Fetch badges for these advertisements
+    let processedAds = [...ads];
+    if (ads.length > 0) {
+      const adIds = ads.map(ad => ad.id);
+
+      // Fetch badges for all ads in the list
+      const badgesQuery = `SELECT advertisement_id, badge_type as type, badge_level as level 
+                           FROM product_badges 
+                           WHERE advertisement_id IN (?) AND is_active = 1`;
+      const [badges] = await promisePool.query(badgesQuery, [adIds]);
+
+      // Group badges by advertisement_id
+      const badgesMap = {};
+      badges.forEach(b => {
+        if (!badgesMap[b.advertisement_id]) {
+          badgesMap[b.advertisement_id] = [];
+        }
+        badgesMap[b.advertisement_id].push({ type: b.type, level: b.level });
+      });
+
+      // Assign badges to ads
+      processedAds = ads.map(ad => ({
+        ...ad,
+        badges: badgesMap[ad.id] || [],
+        images: ad.images ? JSON.parse(ad.images) : [] // Also parse images here as done in browse
+      }));
+    } else {
+      processedAds = [];
+    }
+
     // Get total count
     const [countResult] = await promisePool.query(
       `SELECT COUNT(*) as total FROM advertisements a ${whereClause}`,
