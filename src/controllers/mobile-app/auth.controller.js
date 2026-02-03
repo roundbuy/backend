@@ -72,6 +72,7 @@ const register = async (req, res) => {
     // Send verification email (only if SMTP is configured)
     if (process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
       try {
+        console.log(`📧 SMTP configured. Attempting to send verification email to ${email}...`);
         await sendVerificationEmail(email, full_name, verification_token);
         console.log(`✅ Verification email sent to ${email}`);
       } catch (emailError) {
@@ -79,6 +80,7 @@ const register = async (req, res) => {
         // Continue with registration even if email fails
       }
     } else {
+      console.log('ℹ️ SMTP not configured (check .env). Skipping email sending.');
       console.log(`📧 Development Mode - Verification code for ${email}: ${verification_token}`);
     }
 
@@ -92,7 +94,7 @@ const register = async (req, res) => {
           full_name,
           is_verified: false
         },
-        verification_sent: true
+        verification_sent: !!(process.env.SMTP_USER && process.env.SMTP_PASSWORD)
       }
     });
   } catch (error) {
@@ -188,7 +190,7 @@ const resendVerification = async (req, res) => {
 
     // Find user
     const [users] = await promisePool.query(
-      'SELECT id, is_verified FROM users WHERE email = ?',
+      'SELECT id, is_verified, full_name FROM users WHERE email = ?',
       [email]
     );
 
@@ -224,6 +226,7 @@ const resendVerification = async (req, res) => {
     // Send verification email (only if SMTP is configured)
     if (process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
       try {
+        console.log(`📧 SMTP configured. Attempting to resend verification email to ${email}...`);
         await sendVerificationEmail(email, user.full_name || 'User', verification_token);
         console.log(`✅ Verification email resent to ${email}`);
       } catch (emailError) {
@@ -235,6 +238,7 @@ const resendVerification = async (req, res) => {
         });
       }
     } else {
+      console.log('ℹ️ SMTP not configured (check .env). Skipping email sending.');
       console.log(`📧 Development Mode - New verification code for ${email}: ${verification_token}`);
     }
 
