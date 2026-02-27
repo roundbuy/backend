@@ -395,6 +395,10 @@ const purchasePromotion = async (req, res) => {
             ]
         );
 
+        // Create visibility badge for the advertisement
+        const BadgeService = require('../../services/BadgeService');
+        await BadgeService.assignVisibilityBadge(advertisement_id, plan.plan_type, endDate);
+
         // Update advertisement featured status if it's a show_casing promotion
         if (plan.plan_type === 'show_casing') {
             await promisePool.query(

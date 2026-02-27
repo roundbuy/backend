@@ -608,6 +608,22 @@ const purchasePlan = async (req, res) => {
       [plan_id, startDate, endDate, userId]
     );
 
+    // Assign membership badges to all user's published advertisements
+    try {
+      const [planDetails] = await promisePool.query(
+        'SELECT slug FROM subscription_plans WHERE id = ?',
+        [plan_id]
+      );
+      if (planDetails.length > 0) {
+        const BadgeService = require('../../services/BadgeService');
+        const subscriptionSlug = planDetails[0].slug; // gold, orange, green
+        await BadgeService.assignMembershipBadges(userId, subscriptionSlug, endDate);
+      }
+    } catch (badgeError) {
+      console.error('⚠️ Failed to assign membership badges:', badgeError.message);
+      // Continue even if badge assignment fails
+    }
+
     // Send welcome email
     if (user) {
       try {

@@ -119,4 +119,12 @@ router.put('/:id', authenticate, checkSubscription, mobileAdvertisementControlle
  */
 router.delete('/:id', authenticate, checkSubscription, mobileAdvertisementController.deleteAdvertisement);
 
+/**
+ * @route POST /api/v1/mobile-app/advertisements/sync-badges
+ * @desc Sync membership badges for all user's published advertisements
+ * @access Private (requires authentication)
+ * @description This endpoint ensures all user's published ads have the correct membership badge based on their current subscription plan
+ */
+router.post('/sync-badges', authenticate, mobileAdvertisementController.syncAdvertisementBadges);
+
 module.exports = router;

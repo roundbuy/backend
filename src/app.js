@@ -104,6 +104,7 @@ const mobileFeedbackRoutes = require('./routes/feedbackRoutes');
 const mobilePickupRoutes = require('./routes/pickupRoutes');
 const mobileColorsRoutes = require('./routes/mobile-app/colors.routes');
 const mobileWalletRoutes = require('./routes/mobile-app/wallet.routes');
+const mobileBuyerSellerRoutes = require('./routes/mobile-app/buyer-seller.routes');
 const demoRoutes = require('./routes/demo.routes');
 
 
@@ -168,6 +169,7 @@ app.use(`/api/${API_VERSION}/mobile-app/feedbacks`, mobileFeedbackRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/pickups`, mobilePickupRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/colors`, mobileColorsRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/wallet`, mobileWalletRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/buyer-seller`, mobileBuyerSellerRoutes);
 const platformReviewRoutes = require('./routes/platformReviewRoutes');
 app.use(`/api/${API_VERSION}/mobile-app/reviews`, platformReviewRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/suggestions`, require('./routes/mobile-app/suggestions.routes'));

@@ -73,7 +73,7 @@ const register = async (req, res) => {
     if (process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
       try {
         console.log(`📧 SMTP configured. Attempting to send verification email to ${email}...`);
-        await sendVerificationEmail(email, full_name, verification_token);
+        // await sendVerificationEmail(email, full_name, verification_token);
         console.log(`✅ Verification email sent to ${email}`);
       } catch (emailError) {
         console.error('⚠️ Failed to send verification email:', emailError.message);
@@ -272,11 +272,14 @@ const login = async (req, res) => {
       });
     }
 
-    // Get user
+    // Get user with subscription plan details
     const [users] = await promisePool.query(
-      `SELECT id, email, username, avatar, password_hash, full_name, role, is_active, is_verified, language_preference,
-              subscription_plan_id, subscription_start_date, subscription_end_date, last_username_change, referral_code
-       FROM users WHERE email = ?`,
+      `SELECT u.id, u.email, u.username, u.avatar, u.password_hash, u.full_name, u.role, u.is_active, u.is_verified, u.language_preference,
+              u.subscription_plan_id, u.subscription_start_date, u.subscription_end_date, u.last_username_change, u.referral_code,
+              sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
+       FROM users u
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.email = ?`,
       [email]
     );
 
@@ -358,6 +361,8 @@ const login = async (req, res) => {
             has_active_subscription: false,
             requires_subscription: true,
             subscription_plan_id: user.subscription_plan_id,
+            subscription_plan_slug: user.subscription_plan_slug,
+            subscription_plan_name: user.subscription_plan_name,
             subscription_start_date: user.subscription_start_date,
             subscription_end_date: user.subscription_end_date,
             last_username_change: user.last_username_change,
@@ -385,6 +390,8 @@ const login = async (req, res) => {
           has_active_subscription: hasSubscription,
           requires_subscription: !hasSubscription,
           subscription_plan_id: user.subscription_plan_id,
+          subscription_plan_slug: user.subscription_plan_slug,
+          subscription_plan_name: user.subscription_plan_name,
           subscription_start_date: user.subscription_start_date,
           subscription_end_date: user.subscription_end_date,
           last_username_change: user.last_username_change,

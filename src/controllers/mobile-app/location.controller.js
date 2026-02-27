@@ -17,16 +17,30 @@ const createLocation = async (req, res) => {
       });
     }
 
-    // Check if user already has 3 locations
+    // Check if user already has reached their plan's location limit
+    // 1. Get user's active subscription plan limit
+    const [userPlan] = await promisePool.query(
+      `SELECT sp.location_limit 
+       FROM users u
+       JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.id = ?`,
+      [userId]
+    );
+
+    const locationLimit = userPlan.length > 0 ? userPlan[0].location_limit : 1; // Default to 1 if no plan found
+
+    // 2. Count existing active locations
     const [existingLocations] = await promisePool.query(
       'SELECT COUNT(*) as count FROM user_locations WHERE user_id = ? AND is_active = TRUE',
       [userId]
     );
 
-    if (existingLocations[0].count >= 3) {
+    const currentCount = existingLocations[0].count;
+
+    if (currentCount >= locationLimit) {
       return res.status(400).json({
         success: false,
-        message: 'Maximum 3 locations allowed per user'
+        message: `Maximum ${locationLimit} locations allowed for your current plan. Please upgrade to add more.`
       });
     }
 

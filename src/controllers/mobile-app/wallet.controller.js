@@ -414,6 +414,73 @@ const payWithWallet = async (req, res) => {
 };
 
 /**
+ * Internal helper to charge wallet
+ * @param {Object} connection 
+ * @param {number} userId 
+ * @param {number} amount 
+ * @param {string} referenceType 
+ * @param {string|number} referenceId 
+ * @param {string} description 
+ */
+const chargeWallet = async (connection, userId, amount, referenceType, referenceId, description) => {
+    // Get wallet with lock - EXPECTS CONNECTION TO BE IN TRANSACTION
+    const [wallets] = await connection.query(
+        'SELECT * FROM user_wallets WHERE user_id = ? FOR UPDATE',
+        [userId]
+    );
+
+    if (wallets.length === 0) {
+        throw new Error('Wallet not found');
+    }
+
+    const wallet = wallets[0];
+    const balanceBefore = parseFloat(wallet.balance);
+    const paymentAmount = parseFloat(amount);
+
+    // Check sufficient balance
+    if (balanceBefore < paymentAmount) {
+        const error = new Error('Insufficient wallet balance');
+        error.code = 'INSUFFICIENT_BALANCE';
+        error.required = paymentAmount;
+        error.available = balanceBefore;
+        throw error;
+    }
+
+    const balanceAfter = balanceBefore - paymentAmount;
+
+    // Update wallet balance
+    await connection.query(
+        'UPDATE user_wallets SET balance = ? WHERE id = ?',
+        [balanceAfter, wallet.id]
+    );
+
+    // Create transaction record
+    const [result] = await connection.query(
+        `INSERT INTO wallet_transactions 
+       (wallet_id, user_id, transaction_type, amount, balance_before, balance_after,
+        category, reference_type, reference_id, description, status)
+       VALUES (?, ?, 'debit', ?, ?, ?, 'payment', ?, ?, ?, 'completed')`,
+        [
+            wallet.id,
+            userId,
+            paymentAmount,
+            balanceBefore,
+            balanceAfter,
+            referenceType,
+            referenceId,
+            description || `Payment for ${referenceType}`
+        ]
+    );
+
+    return {
+        transaction_id: result.insertId,
+        amount_paid: paymentAmount,
+        new_balance: balanceAfter,
+        currency: wallet.currency
+    };
+};
+
+/**
  * Request withdrawal
  * POST /api/v1/mobile-app/wallet/withdraw
  */
@@ -517,5 +584,7 @@ module.exports = {
     initiateTopup,
     completeTopup,
     payWithWallet,
-    requestWithdrawal
+    payWithWallet,
+    requestWithdrawal,
+    chargeWallet // Export internal helper for other controllers
 };

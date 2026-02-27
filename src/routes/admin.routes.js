@@ -146,4 +146,8 @@ router.use('/wallets', walletRoutes);
 const suggestionsController = require('../controllers/mobile-app/suggestions.controller');
 router.get('/suggestions', suggestionsController.getSuggestions);
 
+// ==================== REWARDS ====================
+const levelRewardsRoutes = require('./admin/level-rewards.admin.routes');
+router.use('/level-rewards', levelRewardsRoutes);
+
 module.exports = router;

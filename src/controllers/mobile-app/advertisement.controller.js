@@ -164,7 +164,8 @@ const createAdvertisement = async (req, res) => {
       images,
       category_id,
       subcategory_id,
-      location_id,
+      location_id, // Deprecated single location
+      location_ids, // New array of locations
       price,
       display_duration_days,
       activity_id,
@@ -185,6 +186,19 @@ const createAdvertisement = async (req, res) => {
         success: false,
         message: 'Title, description, category, and price are required',
         error_code: 'VALIDATION_ERROR'
+      });
+    }
+
+    // Determine locations to use
+    let targetLocationIds = [];
+    if (location_ids && Array.isArray(location_ids) && location_ids.length > 0) {
+      targetLocationIds = location_ids;
+    } else if (location_id) {
+      targetLocationIds = [location_id];
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: 'At least one location is required'
       });
     }
 
@@ -216,26 +230,22 @@ const createAdvertisement = async (req, res) => {
       }
     }
 
-    // Validate location if provided
-    if (location_id) {
-      const [locations] = await promisePool.query(
-        'SELECT id FROM user_locations WHERE id = ? AND user_id = ? AND is_active = TRUE',
-        [location_id, userId]
-      );
+    // Validate locations
+    const [locations] = await promisePool.query(
+      'SELECT id FROM user_locations WHERE id IN (?) AND user_id = ? AND is_active = TRUE',
+      [targetLocationIds, userId]
+    );
 
-      if (locations.length === 0) {
-        return res.status(400).json({
-          success: false,
-          message: 'Invalid location'
-        });
-      }
+    if (locations.length !== targetLocationIds.length) {
+      return res.status(400).json({
+        success: false,
+        message: 'One or more invalid locations selected'
+      });
     }
 
     // Process images - ensure they are stored in the correct directory
     let processedImages = [];
     if (images && Array.isArray(images)) {
-      // For now, assume images are already uploaded and we have URLs
-      // In a real implementation, you'd handle file uploads here
       processedImages = images;
     }
 
@@ -246,13 +256,16 @@ const createAdvertisement = async (req, res) => {
       endDate.setDate(endDate.getDate() + display_duration_days);
     }
 
-    // Create advertisement with 'published' status (auto-publish)
+    // Create advertisement
+    // Note: We skip storing singular location_id in advertisements table or store the first one as primary/fallback
+    const primaryLocationId = targetLocationIds[0];
+
     const [result] = await promisePool.query(
       `INSERT INTO advertisements
        (user_id, title, description, images, category_id, subcategory_id, location_id,
         price, display_duration_days, activity_id, condition_id, age_id, gender_id,
         size_id, color_id, dim_length, dim_width, dim_height, dim_unit, status, start_date, end_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         title,
@@ -260,7 +273,7 @@ const createAdvertisement = async (req, res) => {
         JSON.stringify(processedImages),
         category_id,
         subcategory_id || null,
-        location_id || null,
+        primaryLocationId, // Store primary location for backward compat
         price,
         display_duration_days || 60,
         activity_id || null,
@@ -279,6 +292,47 @@ const createAdvertisement = async (req, res) => {
 
     const adId = result.insertId;
 
+    // Insert location mappings
+    const locationValues = targetLocationIds.map(locId => [adId, locId]);
+    await promisePool.query(
+      'INSERT INTO advertisement_locations (advertisement_id, location_id) VALUES ?',
+      [locationValues]
+    );
+
+    // Auto-assign membership badge based on user's subscription plan
+    try {
+      const [userSub] = await promisePool.query(
+        `SELECT sp.slug, us.end_date
+         FROM users u
+         JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+         LEFT JOIN user_subscriptions us ON us.user_id = u.id AND us.status = 'active'
+         WHERE u.id = ?
+         LIMIT 1`,
+        [userId]
+      );
+
+      if (userSub.length > 0 && userSub[0].slug) {
+        const BadgeService = require('../../services/BadgeService');
+        const subscriptionSlug = userSub[0].slug.toLowerCase();
+        const expiryDate = userSub[0].end_date || null;
+
+        // Only assign badge if it's a known membership tier
+        if (['gold', 'orange', 'green'].includes(subscriptionSlug)) {
+          await BadgeService.upsertBadge(
+            adId,
+            'membership',
+            subscriptionSlug,
+            expiryDate,
+            null // Auto-calculate priority
+          );
+          console.log(`✅ Auto-assigned ${subscriptionSlug} membership badge to new ad ${adId}`);
+        }
+      }
+    } catch (badgeError) {
+      console.error('⚠️ Failed to auto-assign membership badge:', badgeError.message);
+      // Continue even if badge assignment fails
+    }
+
     // Send notification: Ad submitted for review
     const { createNotificationForUser } = require('../../utils/notificationHelper');
 
@@ -295,7 +349,6 @@ const createAdvertisement = async (req, res) => {
     });
 
     // Schedule notification for auto-publish (simulating 5-minute review)
-    // In production, you might use a job queue for this
     setTimeout(async () => {
       try {
         await createNotificationForUser({
@@ -335,11 +388,26 @@ const createAdvertisement = async (req, res) => {
       [adId]
     );
 
+    // Fetch associated locations
+    const [adLocations] = await promisePool.query(
+      `SELECT ul.* 
+       FROM advertisement_locations al
+       JOIN user_locations ul ON al.location_id = ul.id
+       WHERE al.advertisement_id = ?`,
+      [adId]
+    );
+
+    const fullAd = {
+      ...ads[0],
+      locations: adLocations,
+      images: processedImages
+    };
+
     res.status(201).json({
       success: true,
       message: 'Advertisement created successfully',
       data: {
-        advertisement: ads[0]
+        advertisement: fullAd
       }
     });
   } catch (error) {
@@ -367,6 +435,7 @@ const updateAdvertisement = async (req, res) => {
       category_id,
       subcategory_id,
       location_id,
+      location_ids,
       price,
       display_duration_days,
       activity_id,
@@ -397,13 +466,20 @@ const updateAdvertisement = async (req, res) => {
     const ad = existingAds[0];
 
     // Allow editing for draft, rejected, and published ads (for status changes)
-    // Only allow status changes between draft and published
     const allowedStatuses = ['draft', 'rejected', 'published'];
     if (!allowedStatuses.includes(ad.status)) {
       return res.status(400).json({
         success: false,
         message: 'Cannot modify advertisement with current status'
       });
+    }
+
+    // Determine target location IDs if provided
+    let targetLocationIds = null;
+    if (location_ids && Array.isArray(location_ids) && location_ids.length > 0) {
+      targetLocationIds = location_ids;
+    } else if (location_id) {
+      targetLocationIds = [location_id];
     }
 
     // Validate category if provided
@@ -417,6 +493,21 @@ const updateAdvertisement = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: 'Invalid category'
+        });
+      }
+    }
+
+    // Validate locations if provided
+    if (targetLocationIds) {
+      const [locations] = await promisePool.query(
+        'SELECT id FROM user_locations WHERE id IN (?) AND user_id = ? AND is_active = TRUE',
+        [targetLocationIds, userId]
+      );
+
+      if (locations.length !== targetLocationIds.length) {
+        return res.status(400).json({
+          success: false,
+          message: 'One or more invalid locations selected'
         });
       }
     }
@@ -452,10 +543,13 @@ const updateAdvertisement = async (req, res) => {
       updates.push('subcategory_id = ?');
       params.push(subcategory_id);
     }
-    if (location_id !== undefined) {
+
+    // Update primary location_id for backward compat if locations changed
+    if (targetLocationIds) {
       updates.push('location_id = ?');
-      params.push(location_id);
+      params.push(targetLocationIds[0]);
     }
+
     if (price !== undefined) {
       updates.push('price = ?');
       params.push(price);
@@ -519,19 +613,27 @@ const updateAdvertisement = async (req, res) => {
       }
     }
 
-    if (updates.length === 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'No valid fields to update'
-      });
+    if (updates.length > 0) {
+      // Update advertisement
+      params.push(id, userId);
+      await promisePool.query(
+        `UPDATE advertisements SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ? AND user_id = ?`,
+        params
+      );
     }
 
-    // Update advertisement
-    params.push(id, userId);
-    await promisePool.query(
-      `UPDATE advertisements SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ? AND user_id = ?`,
-      params
-    );
+    // Update location mappings if changed
+    if (targetLocationIds) {
+      // Delete existing mappings
+      await promisePool.query('DELETE FROM advertisement_locations WHERE advertisement_id = ?', [id]);
+
+      // Insert new mappings
+      const locationValues = targetLocationIds.map(locId => [id, locId]);
+      await promisePool.query(
+        'INSERT INTO advertisement_locations (advertisement_id, location_id) VALUES ?',
+        [locationValues]
+      );
+    }
 
     // Get updated advertisement
     const [ads] = await promisePool.query(
@@ -554,11 +656,26 @@ const updateAdvertisement = async (req, res) => {
       [id]
     );
 
+    // Fetch associated locations
+    const [adLocations] = await promisePool.query(
+      `SELECT ul.* 
+       FROM advertisement_locations al
+       JOIN user_locations ul ON al.location_id = ul.id
+       WHERE al.advertisement_id = ?`,
+      [id]
+    );
+
+    const fullAd = {
+      ...ads[0],
+      locations: adLocations,
+      images: ads[0].images ? JSON.parse(ads[0].images) : []
+    };
+
     res.json({
       success: true,
       message: 'Advertisement updated successfully',
       data: {
-        advertisement: ads[0]
+        advertisement: fullAd
       }
     });
   } catch (error) {
@@ -613,8 +730,8 @@ const getUserAdvertisements = async (req, res) => {
       [...params, parseInt(limit), offset]
     );
 
-    // Fetch badges for these advertisements
-    let processedAds = [...ads];
+    // Fetch badges and locations for these advertisements
+    let processedAds = [];
     if (ads.length > 0) {
       const adIds = ads.map(ad => ad.id);
 
@@ -623,6 +740,13 @@ const getUserAdvertisements = async (req, res) => {
                            FROM product_badges 
                            WHERE advertisement_id IN (?) AND is_active = 1`;
       const [badges] = await promisePool.query(badgesQuery, [adIds]);
+
+      // Fetch locations for all ads
+      const locationsQuery = `SELECT al.advertisement_id, ul.id, ul.name, ul.city, ul.country 
+                              FROM advertisement_locations al
+                              JOIN user_locations ul ON al.location_id = ul.id
+                              WHERE al.advertisement_id IN (?)`;
+      const [locations] = await promisePool.query(locationsQuery, [adIds]);
 
       // Group badges by advertisement_id
       const badgesMap = {};
@@ -633,11 +757,21 @@ const getUserAdvertisements = async (req, res) => {
         badgesMap[b.advertisement_id].push({ type: b.type, level: b.level });
       });
 
-      // Assign badges to ads
+      // Group locations by advertisement_id
+      const locationsMap = {};
+      locations.forEach(l => {
+        if (!locationsMap[l.advertisement_id]) {
+          locationsMap[l.advertisement_id] = [];
+        }
+        locationsMap[l.advertisement_id].push(l);
+      });
+
+      // Assign badges and locations to ads
       processedAds = ads.map(ad => ({
         ...ad,
         badges: badgesMap[ad.id] || [],
-        images: ad.images ? JSON.parse(ad.images) : [] // Also parse images here as done in browse
+        locations: locationsMap[ad.id] || [],
+        images: ad.images ? JSON.parse(ad.images) : []
       }));
     } else {
       processedAds = [];
@@ -718,14 +852,23 @@ const getAdvertisement = async (req, res) => {
       [id]
     );
 
-    console.log('Badges:', badges);
+    // Fetch locations separately
+    const [locations] = await promisePool.query(
+      `SELECT ul.* 
+       FROM advertisement_locations al
+       JOIN user_locations ul ON al.location_id = ul.id
+       WHERE al.advertisement_id = ?`,
+      [id]
+    );
 
     res.json({
       success: true,
       data: {
         advertisement: {
           ...ads[0],
-          badges: badges || []
+          badges: badges || [],
+          locations: locations || [],
+          images: ads[0].images ? JSON.parse(ads[0].images) : []
         }
       }
     });
@@ -791,6 +934,7 @@ const deleteAdvertisement = async (req, res) => {
   }
 };
 
+
 /**
  * Browse/search advertisements (authenticated, requires subscription)
  * GET /api/v1/mobile-app/advertisements/browse
@@ -812,11 +956,22 @@ const browseAdvertisements = async (req, res) => {
       sort = 'created_at',
       order = 'DESC',
       page = 1,
-      limit = 20
+      limit = 100
     } = req.query;
 
-    let whereClause = 'WHERE a.status = "published"';
+    // Base WHERE clause
+    let whereClause = `WHERE a.status = "published"`;
     let params = [];
+
+    // Exclude ads that are ONLY in showcases (to prevent duplicates) from the main list
+    whereClause += ` AND a.id NOT IN (
+        SELECT DISTINCT advertisement_id 
+        FROM product_badges 
+        WHERE badge_type = 'visibility' 
+        AND badge_level = 'show_casing' 
+        AND showcase_group_id IS NOT NULL
+        AND is_active = TRUE
+      )`;
 
     // Search query
     if (search) {
@@ -866,14 +1021,30 @@ const browseAdvertisements = async (req, res) => {
     }
 
     // Location-based search (if coordinates provided)
+    // We now join with advertisement_locations -> user_locations
+    let locationJoin = '';
     let distanceSelect = '';
-    if (latitude && longitude) {
-      distanceSelect = `, (6371 * acos(cos(radians(?)) * cos(radians(ul.latitude)) *
-        cos(radians(ul.longitude) - radians(?)) + sin(radians(?)) *
-        sin(radians(ul.latitude)))) AS distance`;
 
-      // Add distance to params (will be used later in HAVING clause)
+    if (latitude && longitude) {
+      // OPTIMIZATION: We select the minimum distance for each ad
+      distanceSelect = `, MIN(
+        (6371 * acos(cos(radians(?)) * cos(radians(ul.latitude)) *
+        cos(radians(ul.longitude) - radians(?)) + sin(radians(?)) *
+        sin(radians(ul.latitude))))
+      ) AS distance`;
+
+      // Add params for distance calculation (lat, long, lat)
       params.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude));
+
+      locationJoin = `
+        LEFT JOIN advertisement_locations al ON a.id = al.advertisement_id
+        LEFT JOIN user_locations ul ON al.location_id = ul.id
+      `;
+    } else {
+      locationJoin = `
+        LEFT JOIN advertisement_locations al ON a.id = al.advertisement_id
+        LEFT JOIN user_locations ul ON al.location_id = ul.id
+      `;
     }
 
     // Valid sort fields
@@ -884,22 +1055,23 @@ const browseAdvertisements = async (req, res) => {
     const offset = (page - 1) * limit;
 
     // Build query
+    // We group by a.id to ensure unique advertisements
+    // We select MAX/MIN/ANY for joined fields where multiple could exist
     let query = `
       SELECT a.*, c.name as category_name, sc.name as subcategory_name,
-             ul.name as location_name, ul.city, ul.country, ul.latitude, ul.longitude,
+             MAX(ul.name) as location_name, 
+             MAX(ul.city) as city, 
+             MAX(ul.country) as country,
              act.name as activity_name, cond.name as condition_name,
              ag.name as age_name, gend.name as gender_name,
              sz.name as size_name, col.name as color_name, col.hex_code,
              u.full_name as seller_name, u.id as seller_id,
-             COALESCE(ap.priority_level, 0) as promotion_priority,
-             ap.plan_type as promotion_type,
-             ap.end_date as promotion_end_date,
-             ap.is_active as is_promoted
+             COALESCE(MAX(pb.max_priority), 0) as badge_priority
              ${distanceSelect}
       FROM advertisements a
       LEFT JOIN categories c ON a.category_id = c.id
       LEFT JOIN categories sc ON a.subcategory_id = sc.id
-      LEFT JOIN user_locations ul ON a.location_id = ul.id
+      ${locationJoin}
       LEFT JOIN ad_activities act ON a.activity_id = act.id
       LEFT JOIN ad_conditions cond ON a.condition_id = cond.id
       LEFT JOIN ad_ages ag ON a.age_id = ag.id
@@ -908,18 +1080,14 @@ const browseAdvertisements = async (req, res) => {
       LEFT JOIN ad_colors col ON a.color_id = col.id
       LEFT JOIN users u ON a.user_id = u.id
       LEFT JOIN (
-        SELECT ap1.advertisement_id, ap1.priority_level, ap1.plan_type, ap1.end_date, ap1.is_active
-        FROM advertisement_promotions ap1
-        INNER JOIN (
-          SELECT advertisement_id, MAX(priority_level) as max_priority
-          FROM advertisement_promotions
-          WHERE is_active = TRUE AND status = 'active' AND end_date > NOW()
-          GROUP BY advertisement_id
-        ) ap2 ON ap1.advertisement_id = ap2.advertisement_id 
-             AND ap1.priority_level = ap2.max_priority
-        WHERE ap1.is_active = TRUE AND ap1.status = 'active' AND ap1.end_date > NOW()
-      ) ap ON a.id = ap.advertisement_id
+        SELECT advertisement_id, MAX(priority_level) as max_priority
+        FROM product_badges
+        WHERE is_active = TRUE 
+          AND (expiry_date IS NULL OR expiry_date > NOW())
+        GROUP BY advertisement_id
+      ) pb ON a.id = pb.advertisement_id
       ${whereClause}
+      GROUP BY a.id
     `;
 
     // Add HAVING clause for distance filter
@@ -927,17 +1095,25 @@ const browseAdvertisements = async (req, res) => {
       query += ` HAVING distance <= ${parseFloat(radius)}`;
     }
 
-    // Order by promotion priority first, then by selected sort field
+    // Order by badge priority first, then by selected sort field
     if (sortField === 'distance' && latitude && longitude) {
-      query += ` ORDER BY promotion_priority DESC, distance ASC, a.created_at DESC`;
+      query += ` ORDER BY badge_priority DESC, distance ASC, a.created_at DESC`;
     } else {
-      query += ` ORDER BY promotion_priority DESC, a.${sortField} ${sortOrder}`;
+      query += ` ORDER BY badge_priority DESC, a.${sortField} ${sortOrder}`;
     }
     query += ` LIMIT ? OFFSET ?`;
 
     params.push(parseInt(limit), offset);
 
     const [ads] = await promisePool.query(query, params);
+
+    console.log(`\n📦 Browse query fetched ${ads.length} ads (excluding showcase-only products)`);
+    if (ads.length > 0) {
+      console.log('   Sample ads:');
+      ads.slice(0, 3).forEach((ad, idx) => {
+        console.log(`   ${idx + 1}. ${ad.title} (ID: ${ad.id})`);
+      });
+    }
 
     // Parse badges if they are strings
     // Fetch badges separately for collected ad IDs
@@ -949,7 +1125,15 @@ const browseAdvertisements = async (req, res) => {
       const badgesQuery = `SELECT advertisement_id, badge_type as type, badge_level as level 
                            FROM product_badges 
                            WHERE advertisement_id IN (?) AND is_active = TRUE`;
+
       const [badges] = await promisePool.query(badgesQuery, [adIds]);
+
+      // Fetch locations for all ads to be complete
+      const locationsQuery = `SELECT al.advertisement_id, ul.id, ul.name, ul.city, ul.country, ul.latitude, ul.longitude 
+                              FROM advertisement_locations al
+                              JOIN user_locations ul ON al.location_id = ul.id
+                              WHERE al.advertisement_id IN (?)`;
+      const [locations] = await promisePool.query(locationsQuery, [adIds]);
 
       // Group badges by advertisement_id
       const badgesMap = {};
@@ -960,36 +1144,107 @@ const browseAdvertisements = async (req, res) => {
         badgesMap[b.advertisement_id].push({ type: b.type, level: b.level });
       });
 
-      // Assign badges to ads
-      processedAds = ads.map(ad => ({
-        ...ad,
-        badges: badgesMap[ad.id] || []
-      }));
+      // Group locations by advertisement_id
+      const locationsMap = {};
+      locations.forEach(l => {
+        if (!locationsMap[l.advertisement_id]) {
+          locationsMap[l.advertisement_id] = [];
+        }
+        locationsMap[l.advertisement_id].push(l);
+      });
+
+      // Assign badges and locations to ads, and determine display lat/long
+      processedAds = ads.map(ad => {
+        const adLocations = locationsMap[ad.id] || [];
+        let displayLocation = adLocations[0]; // Default to first location
+
+        // If search coordinates provided, find closest location
+        if (latitude && longitude && adLocations.length > 0) {
+          let minDistance = Infinity;
+          const searchLat = parseFloat(latitude);
+          const searchLng = parseFloat(longitude);
+
+          adLocations.forEach(loc => {
+            const locLat = parseFloat(loc.latitude);
+            const locLng = parseFloat(loc.longitude);
+            // Simple Euclidean distance for comparison (sufficient for sorting closest)
+            const dist = Math.sqrt(Math.pow(locLat - searchLat, 2) + Math.pow(locLng - searchLng, 2));
+            if (dist < minDistance) {
+              minDistance = dist;
+              displayLocation = loc;
+            }
+          });
+        }
+
+        return {
+          ...ad,
+          badges: badgesMap[ad.id] || [],
+          locations: adLocations,
+          images: ad.images ? JSON.parse(ad.images) : [],
+          // Set top-level lat/long for map markers
+          latitude: displayLocation ? displayLocation.latitude : null,
+          longitude: displayLocation ? displayLocation.longitude : null
+        };
+      });
     }
 
-    if (processedAds.length > 0) {
-      console.log('📦 First Ad Badges Debug:', processedAds[0].badges);
-      console.log('📄 Raw Badges:', ads[0].badges);
+    // Get total count
+    let countQuery = `
+      SELECT COUNT(DISTINCT a.id) as total 
+      FROM advertisements a
+      ${locationJoin}
+      ${whereClause}
+    `;
+
+    let countParams = params.slice(0, params.length - 2); // all params except limit/offset
+
+    // If we have HAVING clause in main query, we can't easily put it in count without subquery
+    if (latitude && longitude && radius) {
+      countQuery = `
+        SELECT COUNT(*) as total FROM (
+          SELECT a.id,
+          MIN((6371 * acos(cos(radians(?)) * cos(radians(ul.latitude)) *
+          cos(radians(ul.longitude) - radians(?)) + sin(radians(?)) *
+          sin(radians(ul.latitude))))) AS distance
+          FROM advertisements a
+          ${locationJoin}
+          ${whereClause}
+          GROUP BY a.id
+          HAVING distance <= ?
+        ) as filtered_ads
+       `;
+
+      countParams = [parseFloat(latitude), parseFloat(longitude), parseFloat(latitude), ...params.slice(3, params.length - 2), parseFloat(radius)];
     }
 
-    // Get total count (without distance filter for simplicity)
-    const countQuery = `SELECT COUNT(*) as total FROM advertisements a ${whereClause}`;
-    const [countResult] = await promisePool.query(
-      countQuery,
-      params.slice(0, params.length - 2) // Remove limit and offset
-    );
-
-    const total = countResult[0].total;
+    const [countResult] = await promisePool.query(countQuery, countParams);
+    const total = countResult[0]?.total || 0;
     const totalPages = Math.ceil(total / limit);
+
+    let assembledAds = processedAds;
+
+    // Only assemble feed (inject banners, showcases, homemarkets) if not filtering by a specific user
+    if (!user_id) {
+      const showcases = await fetchActiveShowcases({ latitude, longitude, radius });
+      const homemarkets = await fetchActiveHomeMarkets({ latitude, longitude, radius });
+      const banners = await fetchActiveBannerAds();
+      assembledAds = await assembleProductListing(processedAds, showcases, homemarkets, banners);
+    }
 
     res.json({
       success: true,
       data: {
-        advertisements: processedAds.map(ad => ({
-          ...ad,
-          images: ad.images ? JSON.parse(ad.images) : [],
-          distance: ad.distance ? parseFloat(ad.distance).toFixed(2) : null
-        })),
+        advertisements: assembledAds.map(item => {
+          if (['showcase', 'homemarket_group', 'homemarket', 'banner', 'section_header'].includes(item.type)) {
+            return item;
+          }
+          // Process regular ad
+          return {
+            ...item,
+            // Images already parsed above
+            distance: item.distance ? parseFloat(item.distance).toFixed(2) : null
+          };
+        }),
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -1002,6 +1257,7 @@ const browseAdvertisements = async (req, res) => {
           subcategory_id,
           activity_id,
           condition_id,
+          user_id,
           price_range: { min: min_price, max: max_price },
           location: latitude && longitude ? { latitude, longitude, radius } : null
         }
@@ -1016,6 +1272,471 @@ const browseAdvertisements = async (req, res) => {
     });
   }
 };
+
+/**
+ * Helper function to fetch active showcases
+ */
+async function fetchActiveShowcases(filters = {}) {
+  try {
+    const { latitude, longitude, radius } = filters;
+
+    // Build location filter for showcases
+    let locationWhere = '';
+    const params = [];
+
+    if (latitude && longitude && radius) {
+      // Check if ANY location of the ad is within radius
+      locationWhere = `
+        AND (
+          SELECT MIN(6371 * acos(cos(radians(?)) * cos(radians(ul_sub.latitude)) *
+          cos(radians(ul_sub.longitude) - radians(?)) + sin(radians(?)) *
+          sin(radians(ul_sub.latitude))))
+          FROM advertisement_locations al_sub
+          JOIN user_locations ul_sub ON al_sub.location_id = ul_sub.id
+          WHERE al_sub.advertisement_id = a.id
+        ) <= ?
+      `;
+      params.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude), parseFloat(radius));
+    }
+
+    // Get all active showcase groups
+    const showcaseQuery = `
+      SELECT 
+        pb.showcase_group_id,
+        MIN(a.user_id) as user_id,
+        MIN(u.full_name) as seller_name,
+        MIN(pb.expiry_date) as expires_at,
+        COUNT(DISTINCT pb.advertisement_id) as product_count
+      FROM product_badges pb
+      JOIN advertisements a ON pb.advertisement_id = a.id
+      JOIN users u ON a.user_id = u.id
+      WHERE pb.badge_type = 'visibility'
+        AND pb.badge_level = 'show_casing'
+        AND pb.is_active = TRUE
+        AND (pb.expiry_date IS NULL OR pb.expiry_date > NOW())
+        AND pb.showcase_group_id IS NOT NULL
+        AND a.status = 'published'
+        ${locationWhere}
+      GROUP BY pb.showcase_group_id
+      HAVING product_count >= 4
+      ORDER BY MIN(pb.created_at) DESC
+      LIMIT 5
+    `;
+
+    const [showcaseGroups] = await promisePool.query(showcaseQuery, params);
+
+    console.log(`🔍 Showcase query found ${showcaseGroups.length} groups`);
+    if (showcaseGroups.length === 0) {
+      return [];
+    }
+
+    // Fetch products for each showcase
+    const showcases = [];
+    for (const group of showcaseGroups) {
+      const productsQuery = `
+        SELECT 
+          a.id, a.title, a.price, a.images, a.user_id,
+          a.created_at, a.views_count,
+          pb.showcase_group_id
+        FROM product_badges pb
+        JOIN advertisements a ON pb.advertisement_id = a.id
+        WHERE pb.showcase_group_id = ?
+          AND pb.is_active = TRUE
+          AND a.status = 'published'
+        ORDER BY pb.created_at
+        LIMIT 10
+      `;
+
+      const [products] = await promisePool.query(productsQuery, [group.showcase_group_id]);
+
+      if (products.length >= 4) {
+        showcases.push({
+          type: 'showcase',
+          showcase_group_id: group.showcase_group_id,
+          user_id: group.user_id,
+          seller_name: group.seller_name,
+          expires_at: group.expires_at,
+          product_count: products.length,
+          products: products.map(p => ({
+            ...p,
+            images: p.images ? JSON.parse(p.images) : []
+          }))
+        });
+      }
+    }
+
+    return showcases;
+  } catch (error) {
+    console.error('Error fetching showcases:', error);
+    return [];
+  }
+}
+
+/**
+ * Helper function to inject showcases into ad results
+ * Injects after every 2 rows (4 ads, assuming 2 columns)
+ */
+async function injectShowcases(ads, filters = {}) {
+  try {
+    const INJECT_INTERVAL = 4; // After every 2 rows (2 ads per row)
+    const showcases = await fetchActiveShowcases(filters);
+
+    if (showcases.length === 0) {
+      return ads;
+    }
+
+    const result = [];
+    let showcaseIndex = 0;
+
+    for (let i = 0; i < ads.length; i++) {
+      result.push(ads[i]);
+
+      // Inject showcase after every 4 ads
+      if ((i + 1) % INJECT_INTERVAL === 0 && showcaseIndex < showcases.length) {
+        result.push(showcases[showcaseIndex]);
+        showcaseIndex++;
+      }
+    }
+
+    console.log(`📦 Injected ${showcaseIndex} showcase(s) into ${ads.length} ads`);
+
+    return result;
+  } catch (error) {
+    console.error('Error injecting showcases:', error);
+    return ads; // Return original ads if injection fails
+  }
+}
+
+/**
+ * Helper function to fetch active HomeMarkets
+ * Returns HomeMarket carousel items with priority ranking (Gold > Orange > Green)
+ */
+async function fetchActiveHomeMarkets(filters = {}) {
+  try {
+    const { latitude, longitude, radius } = filters;
+
+    // Build location filter for homemarkets
+    let locationWhere = '';
+    const params = [];
+
+    if (latitude && longitude && radius) {
+      locationWhere = `
+        AND (
+          SELECT MIN(6371 * acos(cos(radians(?)) * cos(radians(ul_sub.latitude)) *
+          cos(radians(ul_sub.longitude) - radians(?)) + sin(radians(?)) *
+          sin(radians(ul_sub.latitude))))
+          FROM advertisement_locations al_sub
+          JOIN user_locations ul_sub ON al_sub.location_id = ul_sub.id
+          WHERE al_sub.advertisement_id = a.id
+        ) <= ?
+      `;
+      params.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude), parseFloat(radius));
+    }
+
+    // Get active HomeMarket products grouped by user
+    // Priority: Gold (80) > Orange (75) > Green (70)
+    const homemarketQuery = `
+      SELECT 
+        a.user_id,
+        u.full_name as seller_name,
+        pb.badge_level as tier,
+        pb.priority_level,
+        pb.expiry_date as expires_at,
+        a.id as advertisement_id,
+        a.title,
+        a.price,
+        a.images
+      FROM product_badges pb
+      JOIN advertisements a ON pb.advertisement_id = a.id
+      JOIN users u ON a.user_id = u.id
+      WHERE pb.badge_type = 'visibility'
+        AND pb.badge_level IN ('homemarket-gold-7-days', 'homemarket-orange-7-days', 'homemarket-green-7-days')
+        AND pb.is_active = TRUE
+        AND (pb.expiry_date IS NULL OR pb.expiry_date > NOW())
+        AND a.status = 'published'
+        ${locationWhere}
+      ORDER BY pb.priority_level DESC, a.created_at DESC
+    `;
+
+    const [homemarkets] = await promisePool.query(homemarketQuery, params);
+
+    if (homemarkets.length === 0) {
+      return [];
+    }
+
+    // Group by user_id
+    const userGroups = {};
+
+    homemarkets.forEach(hm => {
+      if (!userGroups[hm.user_id]) {
+        userGroups[hm.user_id] = {
+          type: 'homemarket',
+          tier: hm.tier.includes('gold') ? 'gold' : hm.tier.includes('orange') ? 'orange' : 'green',
+          seller_name: hm.seller_name,
+          seller_id: hm.user_id,
+          priority_level: hm.priority_level,
+          products: []
+        };
+      }
+      userGroups[hm.user_id].products.push({
+        id: hm.advertisement_id,
+        title: hm.title,
+        price: hm.price,
+        seller_name: hm.seller_name,
+        images: hm.images ? JSON.parse(hm.images) : []
+      });
+    });
+
+    // Convert to array and sort by priority
+    const result = Object.values(userGroups).sort((a, b) => b.priority_level - a.priority_level);
+
+    console.log(`🏠 Found ${result.length} active HomeMarket user(s) with ${homemarkets.length} total products`);
+    return result;
+
+  } catch (error) {
+    console.error('Error fetching HomeMarkets:', error);
+    return [];
+  }
+}
+/**
+ * Helper function to fetch active banner ads
+ */
+async function fetchActiveBannerAds() {
+  try {
+    const bannerQuery = `
+      SELECT 
+        id,
+        title,
+        image_url,
+        link_url,
+        size,
+        placement
+      FROM banners
+      WHERE status = 'published'
+        AND placement = 'search_listing'
+        AND (start_date IS NULL OR start_date <= NOW())
+        AND (end_date IS NULL OR end_date > NOW())
+      ORDER BY RAND()
+      LIMIT 10
+    `;
+
+    const [banners] = await promisePool.query(bannerQuery);
+
+    const result = banners.map(banner => ({
+      type: 'banner',
+      id: banner.id,
+      title: banner.title,
+      image_url: banner.image_url,
+      link_url: banner.link_url,
+      size: banner.size
+    }));
+
+    console.log(`📢 Found ${result.length} active banner ad(s)`);
+    return result;
+
+  } catch (error) {
+    console.error('Error fetching banner ads:', error);
+    return [];
+  }
+}
+
+/**
+ * Helper function to assemble product listing with correct order
+ * Order: Promotions -> Standard Listings with injections (ShowCasing, HomeMarket, Banners)
+ */
+async function assembleProductListing(ads, showcases, homemarkets, banners) {
+  try {
+    console.log('\n🔍 DEBUG: Starting assembleProductListing');
+    console.log(`📊 Input: ${ads.length} ads, ${showcases.length} showcases, ${homemarkets.length} homemarkets, ${banners.length} banners`);
+
+    // Log first few ads with their badges
+    console.log('\n🏷️  Sample ads with badges:');
+    ads.slice(0, 5).forEach((ad, idx) => {
+      console.log(`  Ad ${idx + 1} (ID: ${ad.id}): ${ad.title}`);
+      if (ad.badges && ad.badges.length > 0) {
+        ad.badges.forEach(badge => {
+          console.log(`    - Badge: type="${badge.type}", level="${badge.level}"`);
+        });
+      } else {
+        console.log(`    - No badges`);
+      }
+    });
+
+    // 1. Separate promotions from standard listings
+    // Promotions: ads with visibility badges (rise_to_top, top_spot, fast, targeted)
+    // Standard: ads WITHOUT promotion visibility badges (can have show_casing or homemarket badges)
+    const promotionBadgeLevels = ['rise_to_top', 'top_spot', 'fast', 'targeted'];
+
+    const promotions = ads.filter(ad =>
+      ad.badges && ad.badges.some(b =>
+        b.type === 'visibility' &&
+        promotionBadgeLevels.includes(b.level)
+      )
+    );
+
+    const standard = ads.filter(ad =>
+      !ad.badges || !ad.badges.some(b =>
+        b.type === 'visibility' && promotionBadgeLevels.includes(b.level)
+      )
+    );
+
+    console.log(`\n📊 Separated: ${promotions.length} promotions, ${standard.length} standard`);
+
+    if (promotions.length > 0) {
+      console.log('🎯 Promotion ads:');
+      promotions.forEach((ad, idx) => {
+        const visibilityBadge = ad.badges.find(b => b.type === 'visibility');
+        console.log(`  ${idx + 1}. ${ad.title} (badge: ${visibilityBadge?.level})`);
+      });
+    } else {
+      console.log('⚠️  No promotions found!');
+    }
+
+    // 2. Build result array
+    const result = [];
+
+    // Step 1: Add promotions section at the very top
+    if (promotions.length > 0) {
+      console.log(`\n✅ Adding PROMOTIONS section with ${promotions.length} ads`);
+      result.push({ type: 'section_header', title: 'PROMOTIONS' });
+      result.push({ type: 'horizontal_line' });
+      result.push({
+        type: 'promotions',
+        products: promotions
+      });
+      result.push({ type: 'horizontal_line' });
+    }
+
+    // Step 2: Add first showcase immediately after promotions
+    let showcaseIndex = 0;
+    let homemarketsInjected = false;
+    let bannerIndex = 0;
+
+    if (showcases.length > 0) {
+      console.log(`\n✅ Adding first SHOWCASING ROOM (${showcases[0].products?.length || 0} products)`);
+      result.push({ type: 'section_header', title: 'SHOWCASING' });
+      result.push({ type: 'horizontal_line' });
+      result.push(showcases[showcaseIndex++]);
+      result.push({ type: 'horizontal_line' });
+
+      // Inject banner after first showcase if available
+      if (bannerIndex < banners.length) {
+        console.log(`  📌 Injecting BANNER after Showcase (size: ${banners[bannerIndex].size})`);
+        result.push(banners[bannerIndex++]);
+      }
+    }
+
+    console.log(`\n📋 Starting standard listings injection (${standard.length} standard ads)...`);
+
+    // Step 3: Inject standard listings with pattern:
+    // Batch standard products into groups of 6 (3 rows × 2 columns)
+    // Pattern: Standard batch → ShowCasing (+Banner) → Standard batch → HomeMarket (+Banner) → Repeat
+    let standardIndex = 0;
+    let batchCount = 0;
+    let patternStep = 0; // 0: wait for showcase, 1: wait for homemarket
+    const PRODUCTS_PER_BATCH = 6; // 3 rows × 2 columns
+
+    while (standardIndex < standard.length) {
+      // Create a batch of standard products
+      const batchSize = Math.min(PRODUCTS_PER_BATCH, standard.length - standardIndex);
+      const batch = standard.slice(standardIndex, standardIndex + batchSize);
+      standardIndex += batchSize;
+
+      console.log(`  ✅ Adding STANDARD batch ${batchCount + 1} with ${batchSize} products`);
+      result.push({
+        type: 'standard',
+        products: batch
+      });
+      batchCount++;
+
+      // Check if we should inject content
+      if (batchCount >= 1) {
+        let injectedContent = false;
+
+        // Determine what to inject (Showcase vs HomeMarket vs Banner)
+        const canInjectShowcase = showcaseIndex < showcases.length;
+        const canInjectHomeMarket = homemarkets.length > 0 && !homemarketsInjected;
+
+        // Strategy: Alternate between Showcase and HomeMarket if available
+        let injectType = null;
+
+        if (patternStep === 0) {
+          // Prefer Showcase
+          if (canInjectShowcase) injectType = 'showcase';
+          else if (canInjectHomeMarket) injectType = 'homemarket_group';
+        } else {
+          // Prefer HomeMarket
+          if (canInjectHomeMarket) injectType = 'homemarket_group';
+          else if (canInjectShowcase) injectType = 'showcase';
+        }
+
+        // If neither found, checking for pure banner injection will happen in the 'else' block below
+
+        if (injectType === 'showcase') {
+          console.log(`  📌 Injecting SHOWCASING after batch ${batchCount} (${showcases[showcaseIndex].products?.length || 0} products)`);
+          result.push({ type: 'section_header', title: 'SHOWCASING' });
+          result.push({ type: 'horizontal_line' });
+          result.push(showcases[showcaseIndex++]);
+          result.push({ type: 'horizontal_line' });
+
+          // Try to inject banner along with showcase
+          if (bannerIndex < banners.length) {
+            console.log(`  📌 Injecting BANNER after Showcase`);
+            result.push(banners[bannerIndex++]);
+            result.push({ type: 'horizontal_line' });
+          }
+
+          injectedContent = true;
+          patternStep = 1; // Switch preference
+        } else if (injectType === 'homemarket_group') {
+          console.log(`  📌 Injecting HOMEMARKET GROUP after batch ${batchCount} (${homemarkets.length} users)`);
+          result.push({ type: 'section_header', title: 'HOMEMARKET' });
+          result.push({ type: 'horizontal_line' });
+          result.push({ type: 'homemarket_group', users: homemarkets });
+          result.push({ type: 'horizontal_line' });
+
+          // Try to inject banner along with homemarket
+          if (bannerIndex < banners.length) {
+            console.log(`  📌 Injecting BANNER after HomeMarket`);
+            result.push(banners[bannerIndex++]);
+            result.push({ type: 'horizontal_line' });
+          }
+
+          injectedContent = true;
+          homemarketsInjected = true;
+          patternStep = 0; // Switch preference
+        } else {
+          // No Showcases or HomeMarkets left (or none available)
+          // Just inject a banner if available
+          if (bannerIndex < banners.length) {
+            console.log(`  📌 Injecting BANNER independently after batch ${batchCount}`);
+            result.push(banners[bannerIndex++]);
+            result.push({ type: 'horizontal_line' });
+            injectedContent = true;
+          }
+        }
+
+        if (injectedContent) {
+          batchCount = 0; // Reset batch count only if we injected something
+        }
+      }
+    }
+
+    console.log(`\n✅ Assembled ${result.length} total items:`);
+    console.log(`   - ${promotions.length} promotions`);
+    console.log(`   - ${standard.length} standard ads`);
+    console.log(`   - ${showcaseIndex} showcases`);
+    console.log(`   - ${homemarkets.length} homemarket users in 1 group`);
+    console.log(`   - ${bannerIndex} banners`);
+    console.log(`   - ${result.filter(r => r.type === 'horizontal_line').length} horizontal lines`);
+    console.log(`   - ${result.filter(r => r.type === 'section_header').length} section headers\n`);
+    return result;
+
+  } catch (error) {
+    console.error('Error assembling product listing:', error);
+    return ads; // Return original ads if assembly fails
+  }
+}
 
 /**
  * Get featured advertisements
@@ -1174,6 +1895,106 @@ const getAdvertisementPublicView = async (req, res) => {
   }
 };
 
+/**
+ * Sync advertisement badges for user's published ads
+ * POST /api/v1/mobile-app/advertisements/sync-badges
+ * This endpoint ensures all user's published ads have the correct membership badge
+ */
+const syncAdvertisementBadges = async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get user's current subscription
+    const [userSub] = await promisePool.query(
+      `SELECT sp.slug, us.end_date
+       FROM users u
+       JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       LEFT JOIN user_subscriptions us ON us.user_id = u.id AND us.status = 'active'
+       WHERE u.id = ?
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (userSub.length === 0 || !userSub[0].slug) {
+      return res.json({
+        success: true,
+        message: 'No active subscription found',
+        data: {
+          synced_count: 0
+        }
+      });
+    }
+
+    const subscriptionSlug = userSub[0].slug.toLowerCase();
+    const expiryDate = userSub[0].end_date || null;
+
+    // Only sync for known membership tiers
+    if (!['gold', 'orange', 'green'].includes(subscriptionSlug)) {
+      return res.json({
+        success: true,
+        message: 'Subscription plan does not require badge sync',
+        data: {
+          synced_count: 0
+        }
+      });
+    }
+
+    // Get all user's published advertisements
+    const [userAds] = await promisePool.query(
+      'SELECT id FROM advertisements WHERE user_id = ? AND status = "published"',
+      [userId]
+    );
+
+    if (userAds.length === 0) {
+      return res.json({
+        success: true,
+        message: 'No published advertisements found',
+        data: {
+          synced_count: 0
+        }
+      });
+    }
+
+    // Sync badges for all ads
+    const BadgeService = require('../../services/BadgeService');
+    let syncedCount = 0;
+
+    for (const ad of userAds) {
+      try {
+        await BadgeService.upsertBadge(
+          ad.id,
+          'membership',
+          subscriptionSlug,
+          expiryDate,
+          null // Auto-calculate priority
+        );
+        syncedCount++;
+      } catch (error) {
+        console.error(`Failed to sync badge for ad ${ad.id}:`, error.message);
+      }
+    }
+
+    console.log(`✅ Synced ${syncedCount}/${userAds.length} advertisement badges for user ${userId}`);
+
+    res.json({
+      success: true,
+      message: `Successfully synced badges for ${syncedCount} advertisements`,
+      data: {
+        synced_count: syncedCount,
+        total_ads: userAds.length,
+        subscription_tier: subscriptionSlug
+      }
+    });
+  } catch (error) {
+    console.error('Sync advertisement badges error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error syncing advertisement badges',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   getFilters,
   getUserLocations,
@@ -1185,5 +2006,6 @@ module.exports = {
   browseAdvertisements,
   getFeaturedAdvertisements,
   getAdvertisementPublicView,
-  getAdvertisementPlans
+  getAdvertisementPlans,
+  syncAdvertisementBadges
 };

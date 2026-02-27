@@ -70,7 +70,7 @@ const sendVerificationEmail = async (email, fullName, verificationToken) => {
           .content { background-color: #f9f9f9; padding: 30px; }
           .verification-code { background-color: #fff; border: 2px solid #4CAF50; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0; }
           .button { display: inline-block; padding: 12px 30px; background-color: #4CAF50; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          .footer { text-align: center; padding: 20px; color: #505050; font-size: 12px; }
         </style>
       </head>
       <body>
@@ -137,7 +137,7 @@ const sendPasswordResetEmail = async (email, fullName, resetToken) => {
           .content { background-color: #f9f9f9; padding: 30px; }
           .reset-code { background-color: #fff; border: 2px solid #FF9800; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; margin: 20px 0; }
           .button { display: inline-block; padding: 12px 30px; background-color: #FF9800; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          .footer { text-align: center; padding: 20px; color: #505050; font-size: 12px; }
           .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 12px; margin: 15px 0; }
         </style>
       </head>
@@ -208,7 +208,7 @@ const sendWelcomeEmail = async (email, fullName, subscriptionDetails) => {
           .content { background-color: #f9f9f9; padding: 30px; }
           .info-box { background-color: #fff; border: 1px solid #ddd; padding: 15px; margin: 15px 0; }
           .info-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #f0f0f0; }
-          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          .footer { text-align: center; padding: 20px; color: #505050; font-size: 12px; }
         </style>
       </head>
       <body>
@@ -299,7 +299,7 @@ const sendSubscriptionExpiryReminder = async (email, fullName, expiryDate) => {
           .header { background-color: #FF5722; color: white; padding: 20px; text-align: center; }
           .content { background-color: #f9f9f9; padding: 30px; }
           .button { display: inline-block; padding: 12px 30px; background-color: #FF5722; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
-          .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+          .footer { text-align: center; padding: 20px; color: #505050; font-size: 12px; }
         </style>
       </head>
       <body>

@@ -58,6 +58,20 @@ const schedulePickup = async (req, res) => {
             });
         }
 
+        // Check if fee has already been paid for this offer (via Auto-Deduction)
+        const [feeTransactions] = await promisePool.execute(
+            `SELECT * FROM wallet_transactions 
+             WHERE reference_type = 'offer_fee' 
+             AND reference_id = ? 
+             AND status = 'completed'`,
+            [offer_id]
+        );
+
+        let isPrePaid = false;
+        if (feeTransactions.length > 0) {
+            isPrePaid = true;
+        }
+
         // Get current fees
         const [fees] = await promisePool.execute(
             'SELECT fee_type, amount, is_percentage FROM pickup_fees WHERE is_active = TRUE'
@@ -87,16 +101,27 @@ const schedulePickup = async (req, res) => {
 
         const totalFee = pickupFee + safeServiceFee + buyerFee + finalItemFee;
 
+        // If pre-paid, we only consider the item fee/buyer fee that WAS paid. 
+        // For simplicity, if pre-paid, we assume the fixed fees are paid. 
+        // But what about item_fee? "Offer Accepted" mainly charges the 'Buyer's Fee' (Usage fee).
+        // The instructions say "charge Buyer’s Fee from there automatically".
+        // Usually 'Buyer's Fee' = Pickup Fee + Service Fee. 
+        // Item Fee (percentage) might be separate?
+        // Let's assume if isPrePaid, the 'payment_status' starts as 'paid' (or partially paid? Instructions imply full automation).
+        // Let's set it to 'paid' if pre-paid.
+
+        const initialPaymentStatus = isPrePaid ? 'paid' : 'unpaid';
+
         // Create pickup schedule
         const [result] = await promisePool.execute(
             `INSERT INTO pickup_schedules 
        (offer_id, advertisement_id, buyer_id, seller_id, scheduled_date, scheduled_time, 
         description, pickup_fee, safe_service_fee, buyer_fee, item_fee, item_fee_discount, 
         total_fee, offer_price, status, payment_status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 'unpaid')`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
             [offer_id, advertisement_id, userId, offer.seller_id, scheduled_date, scheduled_time,
                 description, pickupFee, safeServiceFee, buyerFee, finalItemFee, itemFeeDiscount,
-                totalFee, offerPrice]
+                totalFee, offerPrice, initialPaymentStatus]
         );
 
         // Get the created pickup

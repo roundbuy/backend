@@ -1,5 +1,110 @@
 const { promisePool } = require('../../config/database');
 
+// Create a new offer
+const createOffer = async (req, res) => {
+  const connection = await promisePool.getConnection();
+  try {
+    const userId = req.user.id;
+    const { advertisementId, price, message } = req.body;
+
+    if (!advertisementId || !price) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing advertisement ID or price'
+      });
+    }
+
+    await connection.beginTransaction();
+
+    // Check if advertisement exists
+    const [ads] = await connection.execute(
+      'SELECT *, user_id as seller_id FROM advertisements WHERE id = ? FOR UPDATE',
+      [advertisementId]
+    );
+
+    if (ads.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Advertisement not found'
+      });
+    }
+
+    const ad = ads[0];
+
+    if (ad.seller_id === userId) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot make an offer on your own item'
+      });
+    }
+
+    // Check if offer already exists (pending)
+    const [existing] = await connection.execute(
+      'SELECT id FROM offers WHERE advertisement_id = ? AND buyer_id = ? AND status = "pending"',
+      [advertisementId, userId]
+    );
+
+    if (existing.length > 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'You already have a pending offer for this item'
+      });
+    }
+
+    // Create offer
+    // sender_id is the creator of the offer (buyer)
+    const [result] = await connection.execute(
+      `INSERT INTO offers 
+       (advertisement_id, buyer_id, seller_id, sender_id, offered_price, message, status, currency_code)
+       VALUES (?, ?, ?, ?, ?, ?, 'pending', 'GBP')`,
+      [advertisementId, userId, ad.seller_id, userId, price, message]
+    );
+
+    await connection.commit();
+
+    // Notify Seller
+    try {
+      await promisePool.execute(
+        `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          ad.seller_id,
+          'popup', // 'offer' type? Using popup generic
+          'New Offer',
+          `You received a new offer of £${price} for "${ad.title}"`,
+          JSON.stringify({
+            offer_id: result.insertId,
+            advertisement_id: advertisementId,
+            action: 'new_offer'
+          }),
+          false
+        ]
+      );
+    } catch (e) {
+      console.error('Notification error', e);
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Offer sent successfully',
+      offer_id: result.insertId
+    });
+
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Create offer error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create offer'
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
 // Get all offers for the current user (as buyer or seller)
 const getUserOffers = async (req, res) => {
   try {
@@ -137,11 +242,19 @@ const getUserOffers = async (req, res) => {
     }
 
     // Get offers with advertisement and user details
-    const finalParams = [userId, userId, ...queryParams, parseInt(limit), parseInt(offset)];
+    // Parameters for prepared statement (LIMIT/OFFSET will be in template literal)
+    // 1. CASE WHEN placeholders (in SELECT clause): userId, userId
+    // 2. WHERE clause placeholders: from queryParams
+    const limitNum = Number(limit);
+    const offsetNum = Number(offset);
+    const finalParams = [userId, userId, ...queryParams];
+
     console.log('=== MAIN QUERY PARAMS ===');
     console.log('Final params array:', finalParams);
     console.log('Params count:', finalParams.length);
-    console.log('Expected placeholders: 7 (2 for WHERE buyer/seller, 1 for status, 2 for CASE, 1 for LIMIT, 1 for OFFSET)');
+    console.log('Query params (WHERE):', queryParams);
+    console.log('Param types:', finalParams.map((p, i) => `[${i}] ${typeof p} = ${p}`));
+    console.log('Limit/Offset:', { limit, limitNum, offset, offsetNum });
 
     const [offers] = await promisePool.execute(`
       SELECT 
@@ -168,7 +281,7 @@ const getUserOffers = async (req, res) => {
       JOIN users sender ON o.sender_id = sender.id
       ${whereClause}
       ORDER BY o.created_at DESC
-      LIMIT ? OFFSET ?
+      LIMIT ${limitNum} OFFSET ${offsetNum}
     `, finalParams);
 
     console.log('=== QUERY RESULTS ===');
@@ -342,20 +455,24 @@ const getOfferStats = async (req, res) => {
 
 // Accept an offer
 const acceptOffer = async (req, res) => {
+  const connection = await promisePool.getConnection();
   try {
     const userId = req.user.id;
     const { offerId } = req.params;
 
+    await connection.beginTransaction();
+
     // Get the offer with advertisement details
-    const [offers] = await promisePool.execute(
-      `SELECT o.*, a.title as advertisement_title 
+    const [offers] = await connection.execute(
+      `SELECT o.*, a.title as advertisement_title, a.user_id as seller_id
        FROM offers o 
        LEFT JOIN advertisements a ON o.advertisement_id = a.id 
-       WHERE o.id = ?`,
+       WHERE o.id = ? FOR UPDATE`,
       [offerId]
     );
 
     if (offers.length === 0) {
+      await connection.rollback();
       return res.status(404).json({
         success: false,
         message: 'Offer not found'
@@ -366,20 +483,82 @@ const acceptOffer = async (req, res) => {
 
     // Only seller can accept
     if (offer.seller_id !== userId) {
+      await connection.rollback();
       return res.status(403).json({
         success: false,
         message: 'Only the seller can accept this offer'
       });
     }
 
+    // Check if already accepted
+    if (offer.status === 'accepted') {
+      await connection.rollback();
+      return res.json({
+        success: true,
+        message: 'Offer already accepted'
+      });
+    }
+
+    // --- AUTOMATIC FEE DEDUCTION LOGIC ---
+    let paymentSuccess = false;
+    let feeDetails = null;
+
+    try {
+      // 1. Get Fees
+      const [fees] = await connection.execute(
+        'SELECT fee_type, amount FROM pickup_fees WHERE is_active = TRUE'
+      );
+
+      let pickupFee = 0;
+      let safeServiceFee = 0;
+
+      fees.forEach(fee => {
+        if (fee.fee_type === 'pickup_fee') pickupFee = parseFloat(fee.amount);
+        if (fee.fee_type === 'safe_service_fee') safeServiceFee = parseFloat(fee.amount);
+      });
+
+      const totalBuyerFee = pickupFee + safeServiceFee;
+
+      // 2. Import chargeWallet from wallet.controller (Assuming it's available)
+      const { chargeWallet } = require('./wallet.controller');
+
+      // 3. Attempt to charge Buyer
+      await chargeWallet(
+        connection,
+        offer.buyer_id,
+        totalBuyerFee,
+        'offer_fee',
+        offerId,
+        `Fee for accepted offer #${offerId}`
+      );
+
+      paymentSuccess = true;
+      feeDetails = {
+        amount: totalBuyerFee,
+        currency: 'GBP' // Default
+      };
+
+    } catch (paymentError) {
+      console.log('Automatic fee deduction failed:', paymentError.message);
+      // We continue even if payment fails, but we don't mark it as paid.
+      // Notifications will handle prompting the user.
+    }
+
     // Update offer status
-    await promisePool.execute(
+    // Optional: We could store is_fee_paid in offers table if column existed
+    await connection.execute(
       'UPDATE offers SET status = ? WHERE id = ?',
       ['accepted', offerId]
     );
 
+    await connection.commit();
+
     // Create notification for buyer
     try {
+      const notifMessage = paymentSuccess
+        ? `Your offer of ${offer.currency_code || '£'}${offer.offered_price} for "${offer.advertisement_title}" has been accepted and fees paid!`
+        : `Your offer of ${offer.currency_code || '£'}${offer.offered_price} for "${offer.advertisement_title}" has been accepted! Please pay the pickup fees.`;
+
       await promisePool.execute(
         `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
          VALUES (?, ?, ?, ?, ?, ?)`,
@@ -387,31 +566,35 @@ const acceptOffer = async (req, res) => {
           offer.buyer_id,
           'popup',
           'Offer Accepted',
-          `Your offer of ${offer.currency_code || '£'}${offer.offered_price} for "${offer.advertisement_title}" has been accepted!`,
+          notifMessage,
           JSON.stringify({
             offer_id: offerId,
             advertisement_id: offer.advertisement_id,
-            action: 'offer_accepted'
+            action: 'offer_accepted',
+            fee_paid: paymentSuccess
           }),
           false
         ]
       );
     } catch (notifError) {
       console.error('Error creating notification:', notifError);
-      // Don't fail the request if notification fails
     }
 
     res.json({
       success: true,
-      message: 'Offer accepted successfully'
+      message: 'Offer accepted successfully',
+      fee_paid: paymentSuccess
     });
 
   } catch (error) {
+    if (connection) await connection.rollback();
     console.error('Accept offer error:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to accept offer'
     });
+  } finally {
+    if (connection) connection.release();
   }
 };
 
@@ -490,10 +673,145 @@ const rejectOffer = async (req, res) => {
   }
 };
 
+// Buy Item (Instant)
+const buyItem = async (req, res) => {
+  const connection = await promisePool.getConnection();
+  try {
+    const userId = req.user.id;
+    const { advertisementId } = req.body;
+
+    if (!advertisementId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Missing advertisement ID'
+      });
+    }
+
+    await connection.beginTransaction();
+
+    // 1. Get Advertisement & Price
+    const [ads] = await connection.execute(
+      'SELECT *, user_id as seller_id FROM advertisements WHERE id = ? FOR UPDATE',
+      [advertisementId]
+    );
+
+    if (ads.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: 'Advertisement not found'
+      });
+    }
+
+    const ad = ads[0];
+    const itemPrice = parseFloat(ad.price);
+
+    if (ad.seller_id === userId) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot buy your own item'
+      });
+    }
+
+    // 2. Calculate Fees
+    const [fees] = await connection.execute(
+      'SELECT fee_type, amount FROM pickup_fees WHERE is_active = TRUE'
+    );
+
+    let pickupFee = 0;
+    let safeServiceFee = 0;
+
+    fees.forEach(fee => {
+      if (fee.fee_type === 'pickup_fee') pickupFee = parseFloat(fee.amount);
+      if (fee.fee_type === 'safe_service_fee') safeServiceFee = parseFloat(fee.amount);
+    });
+
+    const totalBuyerFee = pickupFee + safeServiceFee;
+
+    // 3. Charge Wallet & Create Offer
+    const { chargeWallet } = require('./wallet.controller');
+
+    // 3a. Create Offer (Accepted)
+    const [offerResult] = await connection.execute(
+      `INSERT INTO offers 
+       (advertisement_id, buyer_id, seller_id, sender_id, offered_price, message, status, currency_code)
+       VALUES (?, ?, ?, ?, ?, ?, 'accepted', 'GBP')`,
+      [advertisementId, userId, ad.seller_id, userId, itemPrice, 'Instant Purchase via Buy Now']
+    );
+
+    const newOfferId = offerResult.insertId;
+
+    // 3b. Attempt to Charge Wallet with Offer ID
+    try {
+      await chargeWallet(
+        connection,
+        userId,
+        totalBuyerFee,
+        'offer_fee',
+        newOfferId,
+        `Fee for purchasing item "${ad.title}"`
+      );
+    } catch (walletError) {
+      await connection.rollback();
+      if (walletError.code === 'INSUFFICIENT_BALANCE') {
+        return res.status(400).json({
+          success: false,
+          error: 'INSUFFICIENT_BALANCE',
+          message: 'Insufficient wallet balance',
+          required: walletError.required,
+          available: walletError.available
+        });
+      }
+      throw walletError;
+    }
+
+    await connection.commit();
+
+    // 4. Notify Seller
+    try {
+      await promisePool.execute(
+        `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [
+          ad.seller_id,
+          'popup',
+          'Item Sold!',
+          `Your item "${ad.title}" has been purchased for £${itemPrice}!`,
+          JSON.stringify({
+            offer_id: newOfferId,
+            advertisement_id: advertisementId,
+            action: 'item_sold'
+          }),
+          false
+        ]
+      );
+    } catch (e) { console.error('Notification error', e); }
+
+    res.status(200).json({
+      success: true,
+      message: 'Item purchased successfully',
+      offer_id: newOfferId
+    });
+
+  } catch (error) {
+    if (connection) await connection.rollback();
+    console.error('Buy item error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to purchase item'
+    });
+  } finally {
+    if (connection) connection.release();
+  }
+};
+
 module.exports = {
+  createOffer,
   getUserOffers,
   getAdvertisementOffers,
   getOfferStats,
   acceptOffer,
-  rejectOffer
+  rejectOffer,
+  buyItem
 };

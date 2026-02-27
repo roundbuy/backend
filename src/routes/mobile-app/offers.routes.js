@@ -8,6 +8,9 @@ const subscriptionMiddleware = require('../../middleware/subscription.middleware
 router.use(authMiddleware.authenticate);
 router.use(subscriptionMiddleware.checkSubscription);
 
+// Create a new offer
+router.post('/', offersController.createOffer);
+
 // Get all offers for the current user
 // Query params: type (buyer/seller/all), status (pending/accepted/rejected/counter_offered), page, limit
 router.get('/',
@@ -22,6 +25,11 @@ router.get('/stats',
 // Get offers for a specific advertisement
 router.get('/advertisement/:advertisementId',
   offersController.getAdvertisementOffers
+);
+
+// Buy Item (Instant)
+router.post('/buy',
+  offersController.buyItem
 );
 
 // Accept an offer

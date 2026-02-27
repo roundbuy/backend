@@ -22,4 +22,9 @@ router.get('/lottery', rewardsController.getLotteryInfo);
 // Popular searches routes
 router.get('/popular-searches', rewardsController.getPopularSearches);
 
+// Level Rewards routes
+router.get('/level-status', rewardsController.getLevelStatus);
+router.get('/level-rewards', rewardsController.getLevelRewards);
+router.post('/redeem-level-reward', rewardsController.redeemLevelReward);
+
 module.exports = router;
