@@ -389,6 +389,121 @@ class ClaimService {
 
         return true;
     }
+
+    /**
+     * Update claim with seller's response (accept/decline/negotiate)
+     */
+    async sendSellerResponse(claimId, userId, response, decision) {
+        const [claims] = await promisePool.query(
+            'SELECT seller_id FROM claims WHERE id = ?',
+            [claimId]
+        );
+
+        if (claims.length === 0) throw new Error('Claim not found');
+        if (claims[0].seller_id !== userId) throw new Error('Unauthorized');
+
+        let newStatus;
+        if (decision === 'accept') newStatus = 'under_review'; // Admin will still review, but seller accepts
+        else if (decision === 'negotiate') newStatus = 'negotiating';
+        else newStatus = 'under_review'; // decline - under review
+
+        await promisePool.query(
+            `UPDATE claims 
+             SET seller_response = ?, seller_decision = ?, status = ?, updated_at = NOW()
+             WHERE id = ?`,
+            [response, decision, newStatus, claimId]
+        );
+
+        const label = { accept: 'accepted', decline: 'declined', negotiate: 'requested to negotiate' }[decision];
+        await this.addClaimMessage(claimId, userId, `Seller has responded and ${label}.`, 'status_update', true);
+
+        return true;
+    }
+
+    /**
+     * Submit per-user negotiation decision for claim resolution
+     */
+    async submitNegotiationDecision(claimId, userId, decision) {
+        const connection = await promisePool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            const [rows] = await connection.query(
+                'SELECT user_id, seller_id FROM claims WHERE id = ?',
+                [claimId]
+            );
+
+            if (rows.length === 0) throw new Error('Claim not found');
+            const c = rows[0];
+            const isBuyer = c.user_id === userId;
+            const isSeller = c.seller_id === userId;
+
+            if (!isBuyer && !isSeller) throw new Error('Not authorized');
+
+            const field = isBuyer ? 'negotiation_buyer_decision' : 'negotiation_seller_decision';
+            await connection.query(
+                `UPDATE claims SET ${field} = ?, updated_at = NOW() WHERE id = ?`,
+                [decision, claimId]
+            );
+
+            // Check if both decided
+            const [updated] = await connection.query(
+                'SELECT negotiation_buyer_decision, negotiation_seller_decision FROM claims WHERE id = ?',
+                [claimId]
+            );
+
+            if (updated[0].negotiation_buyer_decision && updated[0].negotiation_seller_decision) {
+                const bothAccept = updated[0].negotiation_buyer_decision === 'accept' && 
+                                  updated[0].negotiation_seller_decision === 'accept';
+                const newStatus = bothAccept ? 'settled' : 'under_review';
+                await connection.query('UPDATE claims SET status = ? WHERE id = ?', [newStatus, claimId]);
+            }
+
+            const actor = isBuyer ? 'Buyer' : 'Seller';
+            await connection.query(
+                `INSERT INTO claim_messages (claim_id, user_id, message, is_system_message, message_type)
+                 VALUES (?, ?, ?, TRUE, 'status_update')`,
+                [claimId, userId, `${actor} ${decision === 'accept' ? 'accepted' : 'declined'} the negotiated resolution.`]
+            );
+
+            await connection.commit();
+            return true;
+        } catch (error) {
+            await connection.rollback();
+            throw error;
+        } finally {
+            connection.release();
+        }
+    }
+
+    /**
+     * Submit negotiation suggestion
+     */
+    async submitClaimNegotiationSuggestion(claimId, userId, suggestion) {
+        const [rows] = await promisePool.query(
+            'SELECT user_id, seller_id FROM claims WHERE id = ?',
+            [claimId]
+        );
+
+        if (rows.length === 0) throw new Error('Claim not found');
+        const c = rows[0];
+        const isBuyer = c.user_id === userId;
+        const isSeller = c.seller_id === userId;
+
+        if (!isBuyer && !isSeller) throw new Error('Not authorized');
+
+        const field = isBuyer ? 'buyer_suggestion' : 'seller_suggestion';
+        const actor = isBuyer ? 'Buyer' : 'Seller';
+
+        await promisePool.query(
+            `UPDATE claims SET ${field} = ?, updated_at = NOW() WHERE id = ?`,
+            [suggestion, claimId]
+        );
+
+        await this.addClaimMessage(claimId, userId, `${actor} has submitted a suggestion for resolution.`, 'status_update', true);
+
+        return true;
+    }
 }
 
 module.exports = new ClaimService();

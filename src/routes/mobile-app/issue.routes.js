@@ -55,4 +55,10 @@ router.post('/:issueId/messages', authenticate, issueController.addMessage);
 // Get messages
 router.get('/:issueId/messages', authenticate, issueController.getMessages);
 
+// Negotiate suggestion
+router.post('/:issueId/negotiate/suggestion', authenticate, issueController.addNegotiationSuggestion);
+
+// Negotiate decision
+router.post('/:issueId/negotiate/decision', authenticate, issueController.decideNegotiation);
+
 module.exports = router;

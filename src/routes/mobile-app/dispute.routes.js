@@ -168,12 +168,12 @@ router.put(
     body('status')
       .notEmpty()
       .withMessage('Status is required')
-      .isIn(['pending', 'under_review', 'awaiting_response', 'negotiation', 'resolved', 'closed', 'escalated'])
+      .isIn(['pending', 'under_review', 'awaiting_response', 'negotiating', 'resolved', 'settled', 'closed', 'escalated'])
       .withMessage('Invalid status'),
-    body('resolution_status')
+    body('confirmation')
       .optional()
-      .isIn(['accepted', 'rejected', 'in_negotiation', 'ended'])
-      .withMessage('Invalid resolution status')
+      .isIn(['confirmed', 'pending'])
+      .withMessage('Invalid confirmation type')
   ],
   disputeController.updateDisputeStatus
 );
@@ -192,15 +192,65 @@ router.post(
     body('response')
       .notEmpty()
       .withMessage('Response is required')
-      .isLength({ min: 10, max: 2000 })
-      .withMessage('Response must be between 10 and 2000 characters'),
+      .isLength({ min: 2, max: 2000 })
+      .withMessage('Response must be between 2 and 2000 characters'),
+    body('decision')
+      .notEmpty()
+      .withMessage('Decision is required')
+      .isIn(['accept', 'decline', 'negotiate'])
+      .withMessage('Decision must be "accept", "decline", or "negotiate"')
+  ],
+  disputeController.sendSellerResponse
+);
+
+/**
+ * @route   POST /api/mobile-app/disputes/:id/suggestions
+ * @desc    Add negotiation suggestion
+ * @access  Private
+ */
+router.post(
+  '/:id/suggestions',
+  [
+    param('id').isInt().withMessage('Dispute ID must be a valid integer'),
+    body('suggestion').notEmpty().withMessage('Suggestion is required')
+  ],
+  disputeController.addNegotiationSuggestion
+);
+
+/**
+ * @route   POST /api/mobile-app/disputes/:id/decide-negotiation
+ * @desc    Decide on negotiation
+ * @access  Private
+ */
+router.post(
+  '/:id/decide-negotiation',
+  [
+    param('id').isInt().withMessage('Dispute ID must be a valid integer'),
+    body('decision').isIn(['accept', 'decline']).withMessage('Invalid decision')
+  ],
+  disputeController.decideNegotiation
+);
+
+/**
+ * @route   POST /api/mobile-app/disputes/:id/submit-negotiation-decision
+ * @desc    Submit negotiation decision
+ * @access  Private
+ */
+router.post(
+  '/:id/submit-negotiation-decision',
+  [
+    param('id').isInt().withMessage('Dispute ID must be a valid integer'),
     body('decision')
       .notEmpty()
       .withMessage('Decision is required')
       .isIn(['accept', 'decline'])
-      .withMessage('Decision must be either "accept" or "decline"')
+      .withMessage('Invalid decision'),
+    body('reason')
+      .optional()
+      .isString()
+      .withMessage('Reason must be a string')
   ],
-  disputeController.sendSellerResponse
+  disputeController.submitNegotiationDecision
 );
 
 module.exports = router;

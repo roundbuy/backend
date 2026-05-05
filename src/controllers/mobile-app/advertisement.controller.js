@@ -961,7 +961,8 @@ const browseAdvertisements = async (req, res) => {
 
     // Base WHERE clause
     let whereClause = `WHERE a.status = "published"`;
-    let params = [];
+    let whereParams = [];
+    let selectParams = [];
 
     // Exclude ads that are ONLY in showcases (to prevent duplicates) from the main list
     whereClause += ` AND a.id NOT IN (
@@ -977,47 +978,64 @@ const browseAdvertisements = async (req, res) => {
     if (search) {
       whereClause += ' AND (a.title LIKE ? OR a.description LIKE ?)';
       const searchTerm = `%${search}%`;
-      params.push(searchTerm, searchTerm);
+      whereParams.push(searchTerm, searchTerm);
     }
 
     // User filter
     if (user_id) {
       whereClause += ' AND a.user_id = ?';
-      params.push(user_id);
+      whereParams.push(user_id);
     }
 
+    // Helper function to build IN clauses for multi-select
+    const buildInClause = (column, value) => {
+      if (!value) return null;
+      // Handle array or comma-separated string
+      const values = Array.isArray(value) ? value : value.split(',').filter(v => v.trim());
+      if (values.length === 0) return null;
+
+      return {
+        clause: ` AND ${column} IN (?)`,
+        params: [values]
+      };
+    };
+
     // Category filter
-    if (category_id) {
-      whereClause += ' AND a.category_id = ?';
-      params.push(category_id);
+    const categoryQuery = buildInClause('a.category_id', category_id);
+    if (categoryQuery) {
+      whereClause += categoryQuery.clause;
+      whereParams.push(categoryQuery.params[0]);
     }
 
     // Subcategory filter
-    if (subcategory_id) {
-      whereClause += ' AND a.subcategory_id = ?';
-      params.push(subcategory_id);
+    const subcategoryQuery = buildInClause('a.subcategory_id', subcategory_id);
+    if (subcategoryQuery) {
+      whereClause += subcategoryQuery.clause;
+      whereParams.push(subcategoryQuery.params[0]);
     }
 
     // Activity filter
-    if (activity_id) {
-      whereClause += ' AND a.activity_id = ?';
-      params.push(activity_id);
+    const activityQuery = buildInClause('a.activity_id', activity_id);
+    if (activityQuery) {
+      whereClause += activityQuery.clause;
+      whereParams.push(activityQuery.params[0]);
     }
 
     // Condition filter
-    if (condition_id) {
-      whereClause += ' AND a.condition_id = ?';
-      params.push(condition_id);
+    const conditionQuery = buildInClause('a.condition_id', condition_id);
+    if (conditionQuery) {
+      whereClause += conditionQuery.clause;
+      whereParams.push(conditionQuery.params[0]);
     }
 
     // Price range filter
     if (min_price) {
       whereClause += ' AND a.price >= ?';
-      params.push(parseFloat(min_price));
+      whereParams.push(parseFloat(min_price));
     }
     if (max_price) {
       whereClause += ' AND a.price <= ?';
-      params.push(parseFloat(max_price));
+      whereParams.push(parseFloat(max_price));
     }
 
     // Location-based search (if coordinates provided)
@@ -1034,7 +1052,7 @@ const browseAdvertisements = async (req, res) => {
       ) AS distance`;
 
       // Add params for distance calculation (lat, long, lat)
-      params.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude));
+      selectParams.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude));
 
       locationJoin = `
         LEFT JOIN advertisement_locations al ON a.id = al.advertisement_id
@@ -1066,7 +1084,8 @@ const browseAdvertisements = async (req, res) => {
              ag.name as age_name, gend.name as gender_name,
              sz.name as size_name, col.name as color_name, col.hex_code,
              u.full_name as seller_name, u.id as seller_id,
-             COALESCE(MAX(pb.max_priority), 0) as badge_priority
+             COALESCE(MAX(pb.max_priority), 0) as badge_priority,
+             (SELECT COUNT(*) FROM favorites WHERE advertisement_id = a.id AND user_id = ?) > 0 as is_favorite
              ${distanceSelect}
       FROM advertisements a
       LEFT JOIN categories c ON a.category_id = c.id
@@ -1103,7 +1122,7 @@ const browseAdvertisements = async (req, res) => {
     }
     query += ` LIMIT ? OFFSET ?`;
 
-    params.push(parseInt(limit), offset);
+    const params = [req.user?.id || 0, ...selectParams, ...whereParams, parseInt(limit), offset];
 
     const [ads] = await promisePool.query(query, params);
 
@@ -1865,7 +1884,7 @@ const getAdvertisementPublicView = async (req, res) => {
         advertisement: {
           ...ad,
           images: ad.images ? JSON.parse(ad.images) : [],
-          is_favorited: isFavorited,
+          is_favorite: isFavorited,
           badges: badges || [],
           seller: {
             id: ad.seller_id,

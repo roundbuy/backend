@@ -1,10 +1,24 @@
 const express = require('express');
 const router = express.Router();
 const mobileAdvertisementController = require('../../controllers/mobile-app/advertisement.controller');
-const { authenticate } = require('../../middleware/auth.middleware');
+const { authenticate, optionalAuth } = require('../../middleware/auth.middleware');
 const { checkSubscription, checkFeatureLimit } = require('../../middleware/subscription.middleware');
 
 // Advertisement routes
+
+/**
+ * @route GET /api/v1/mobile-app/advertisements/guest/browse
+ * @desc Browse/search all published advertisements with filters for guests
+ * @access Public (optional authentication)
+ */
+router.get('/guest/browse', optionalAuth, mobileAdvertisementController.browseAdvertisements);
+
+/**
+ * @route GET /api/v1/mobile-app/advertisements/guest/view/:id
+ * @desc Get advertisement details for public viewing (increments view count) for guests
+ * @access Public (optional authentication)
+ */
+router.get('/guest/view/:id', optionalAuth, mobileAdvertisementController.getAdvertisementPublicView);
 
 /**
  * @route GET /api/v1/mobile-app/advertisements/filters

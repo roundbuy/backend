@@ -104,9 +104,30 @@ const scheduleExchange = async (req, res) => {
 const confirmDeal = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { offerId } = req.params;
+        const { advertisementId } = req.params;
 
-        // Logic to confirm deal (need both buyer and seller to confirm)
+        // Find the order for this advertisement that isn't cancelled
+        const [orderRows] = await promisePool.execute(
+            'SELECT id, buyer_id, seller_id, buyer_confirmed, seller_confirmed FROM orders WHERE advertisement_id = ? AND status NOT IN ("cancelled", "refunded") LIMIT 1',
+            [advertisementId]
+        );
+
+        if (orderRows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Active order not found for this item' });
+        }
+
+        const order = orderRows[0];
+
+        let updateQuery = '';
+        if (userId === order.buyer_id) {
+            updateQuery = 'UPDATE orders SET buyer_confirmed = 1 WHERE id = ?';
+        } else if (userId === order.seller_id) {
+            updateQuery = 'UPDATE orders SET seller_confirmed = 1 WHERE id = ?';
+        } else {
+            return res.status(403).json({ success: false, message: 'You are not involved in this order' });
+        }
+
+        await promisePool.execute(updateQuery, [order.id]);
 
         res.json({
             success: true,
@@ -269,6 +290,127 @@ const getActionCenterMessages = async (req, res) => {
     }
 };
 
+// Get Action Status for 6-Step Process
+const getActionStatus = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { conversationId } = req.params;
+
+        // Fetch conversation details to get buyer, seller, and advertisement
+        const [convRows] = await promisePool.execute(
+            'SELECT advertisement_id, buyer_id, seller_id FROM conversations WHERE id = ?',
+            [conversationId]
+        );
+
+        if (convRows.length === 0) {
+            return res.status(404).json({ success: false, message: 'Conversation not found' });
+        }
+
+        const { advertisement_id, buyer_id, seller_id } = convRows[0];
+
+        // Check if current user is buyer or seller
+        const isBuyer = userId === buyer_id;
+
+        // Initialize status object
+        const status = {
+            step1: false,
+            step2: false,
+            step3: false,
+            step4: false,
+            step5: false,
+            step6: false,
+            meta: {
+                isBuyer,
+                buyerId: buyer_id,
+                sellerId: seller_id,
+                advertisementId: advertisement_id,
+                offerId: null,
+                orderId: null,
+                paymentMethod: null
+            }
+        };
+
+        // Step 1: Enquiries (Has the user sent a specific kind of message?)
+        // Rules: message contains ?, what, how, when OR if there's an image. Right now we just check the message text.
+        const [msgRows] = await promisePool.execute(
+            `SELECT id FROM messages WHERE conversation_id = ? AND sender_id = ? 
+             AND (
+                 message LIKE '%?%' OR 
+                 message LIKE '%what%' OR 
+                 message LIKE '%how%' OR 
+                 message LIKE '%when%' OR 
+                 message LIKE '%http%' OR 
+                 message LIKE '%/uploads/image-%'
+             ) LIMIT 1`,
+            [conversationId, userId]
+        );
+        status.step1 = msgRows.length > 0;
+
+        // Step 2: Offers (Does an offer exist for this conversation?)
+        // (User feedback: Should be 'Done' if an offer is merely made, not just accepted)
+        const [offerRows] = await promisePool.execute(
+            'SELECT id FROM offers WHERE conversation_id = ? LIMIT 1',
+            [conversationId]
+        );
+        if (offerRows.length > 0) {
+            status.step2 = true;
+            status.meta.offerId = offerRows[0].id;
+        }
+
+        status.meta.deliveryOption = null;
+
+        // Step 3: Payment (Does an order exist for this advertisement and buyer?)
+        const [orderRows] = await promisePool.execute(
+            'SELECT id, status, payment_method, notes, buyer_confirmed, seller_confirmed FROM orders WHERE buyer_id = ? AND advertisement_id = ? AND status IN ("confirmed", "shipped", "delivered", "completed")',
+            [buyer_id, advertisement_id]
+        );
+
+        if (orderRows.length > 0) {
+            status.step3 = true;
+            status.meta.orderId = orderRows[0].id;
+            status.meta.paymentMethod = orderRows[0].payment_method;
+
+            try {
+                const parsedNotes = JSON.parse(orderRows[0].notes || '{}');
+                status.meta.deliveryOption = parsedNotes.deliveryOption;
+            } catch (e) {
+                // Ignore parse errors if notes aren't JSON
+            }
+
+            // Step 5: Deal Confirmation (Are both buyer_confirmed and seller_confirmed true?)
+            if (orderRows[0].buyer_confirmed === 1 && orderRows[0].seller_confirmed === 1) {
+                status.step5 = true;
+            }
+        }
+
+        // Step 4: Schedule Pickup (Does *any* active pickup schedule exist?)
+        // (User feedback: Should be 'Done' if a schedule is created, even if pending)
+        const [pickupRows] = await promisePool.execute(
+            'SELECT id FROM pickup_schedules WHERE advertisement_id = ? AND status NOT IN ("cancelled") LIMIT 1',
+            [advertisement_id]
+        );
+        status.step4 = pickupRows.length > 0;
+
+        // Step 6: Give Feedback (Has the user submitted a review for this order/ad?)
+        if (status.meta.orderId) {
+            const [reviewRows] = await promisePool.execute(
+                'SELECT id FROM reviews WHERE reviewer_id = ? AND order_id = ? LIMIT 1',
+                [userId, status.meta.orderId]
+            );
+            status.step6 = reviewRows.length > 0;
+        }
+
+        res.json({
+            success: true,
+            data: status
+        });
+
+    } catch (error) {
+        console.error('getActionStatus error:', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch action status' });
+    }
+};
+
 module.exports = {
     getEnquiries,
     makeOffer,
@@ -276,5 +418,6 @@ module.exports = {
     selectDelivery,
     scheduleExchange,
     confirmDeal,
-    getActionCenterMessages
+    getActionCenterMessages,
+    getActionStatus
 };

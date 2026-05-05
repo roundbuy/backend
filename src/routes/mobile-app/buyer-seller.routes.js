@@ -22,6 +22,9 @@ router.post('/offers/:offerId/schedule', buyerSellerController.scheduleExchange)
 // Step 5: Deal Confirmation
 router.post('/offers/:offerId/confirm', buyerSellerController.confirmDeal);
 
+// Action Status Tracking
+router.get('/action-status/:conversationId', buyerSellerController.getActionStatus);
+
 // Action Center Hub
 router.get('/action-center', buyerSellerController.getActionCenterMessages);
 

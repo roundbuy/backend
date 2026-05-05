@@ -8,7 +8,10 @@ const rateLimit = require('express-rate-limit');
 const app = express();
 
 // Security middleware
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginEmbedderPolicy: false // Ensure images can be embedded from other domains if necessary
+}));
 
 // CORS configuration
 const corsOptions = {
@@ -105,6 +108,8 @@ const mobilePickupRoutes = require('./routes/pickupRoutes');
 const mobileColorsRoutes = require('./routes/mobile-app/colors.routes');
 const mobileWalletRoutes = require('./routes/mobile-app/wallet.routes');
 const mobileBuyerSellerRoutes = require('./routes/mobile-app/buyer-seller.routes');
+const mobileCheckoutRoutes = require('./routes/mobile-app/checkout.routes');
+const mobileResolutionInboxRoutes = require('./routes/mobile-app/resolution-inbox.routes');
 const demoRoutes = require('./routes/demo.routes');
 
 
@@ -154,6 +159,7 @@ app.use(`/api/${API_VERSION}/mobile-app/locations`, mobileLocationRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/settings`, mobileSettingsRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/upload`, mobileUploadRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/messaging`, mobileMessagingRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/checkout`, mobileCheckoutRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/favorites`, mobileFavoritesRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/offers`, mobileOffersRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/disputes`, mobileDisputeRoutes);
@@ -170,6 +176,7 @@ app.use(`/api/${API_VERSION}/mobile-app/pickups`, mobilePickupRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/colors`, mobileColorsRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/wallet`, mobileWalletRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/buyer-seller`, mobileBuyerSellerRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/resolution-inbox`, mobileResolutionInboxRoutes);
 const platformReviewRoutes = require('./routes/platformReviewRoutes');
 app.use(`/api/${API_VERSION}/mobile-app/reviews`, platformReviewRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/suggestions`, require('./routes/mobile-app/suggestions.routes'));
@@ -191,7 +198,11 @@ app.use(`/api/${API_VERSION}/mobile-app/rewards`, require('./routes/mobile-app/r
 app.use(`/api/${API_VERSION}/demo`, demoRoutes);
 
 // Serve uploaded files
-app.use('/uploads', express.static('uploads'));
+app.use('/uploads', (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static('uploads'));
 
 // 404 handler
 app.use((req, res) => {

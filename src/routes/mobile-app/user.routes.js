@@ -11,8 +11,16 @@ const {
   getDataRequests,
   getDataRequest,
   checkUsernameAvailability,
-  updateUsername
+  updateUsername,
+  getUserMetrics
 } = require('../../controllers/mobile-app/user.controller');
+
+/**
+ * @route GET /api/v1/mobile-app/user/metrics
+ * @desc Get user's financial metrics (Profit Meters)
+ * @access Private
+ */
+router.get('/metrics', authenticate, getUserMetrics);
 
 console.log('Imported functions:', { getUserById, updateUser, updateProfileImage });
 

@@ -253,10 +253,10 @@ exports.respondToIssue = async (req, res) => {
             });
         }
 
-        if (!['accept', 'decline'].includes(decision)) {
+        if (!['accept', 'decline', 'negotiate'].includes(decision)) {
             return res.status(400).json({
                 success: false,
-                message: 'Invalid decision. Must be "accept" or "decline"'
+                message: 'Invalid decision. Must be "accept", "decline", or "negotiate"'
             });
         }
 
@@ -277,6 +277,8 @@ exports.respondToIssue = async (req, res) => {
         let newStatus = 'seller_responded';
         if (decision === 'accept') {
             newStatus = 'settled';
+        } else if (decision === 'negotiate') {
+            newStatus = 'negotiating';
         }
 
         // Update issue with response
@@ -325,10 +327,10 @@ exports.closeIssue = async (req, res) => {
         const { issueId } = req.params;
         const userId = req.user.id;
 
-        // Verify user is the buyer (creator)
+        // Verify user is part of the issue
         const [issue] = await promisePool.query(
-            'SELECT * FROM issues WHERE id = ? AND created_by = ?',
-            [issueId, userId]
+            'SELECT * FROM issues WHERE id = ? AND (created_by = ? OR other_party_id = ?)',
+            [issueId, userId, userId]
         );
 
         if (issue.length === 0) {
@@ -381,6 +383,7 @@ exports.escalateToDispute = async (req, res) => {
     try {
         const { issueId } = req.params;
         const userId = req.user.id;
+        const { dispute_description, dispute_demand } = req.body || {};
 
         // Get issue details
         const [issue] = await promisePool.query(
@@ -420,6 +423,15 @@ exports.escalateToDispute = async (req, res) => {
         const deadline = new Date();
         deadline.setDate(deadline.getDate() + 7);
 
+        // Combine custom description with demand if both exist, otherwise fallback to issue description
+        let finalDescription = issueData.issue_description;
+        if (dispute_description) {
+            finalDescription = dispute_description;
+            if (dispute_demand) {
+                finalDescription += `\n\nDemand: ${dispute_demand}`;
+            }
+        }
+
         // Create dispute
         const [result] = await promisePool.query(
             `INSERT INTO disputes (
@@ -444,7 +456,7 @@ exports.escalateToDispute = async (req, res) => {
                 'issue_escalation',
                 'buyer_initiated',
                 `Escalated from Issue #${issueData.issue_number}`,
-                issueData.issue_description
+                finalDescription
             ]
         );
 
@@ -683,6 +695,100 @@ exports.getMessages = async (req, res) => {
             success: false,
             message: 'Failed to fetch messages'
         });
+    }
+};
+
+/**
+ * Add suggestion for negotiation
+ */
+exports.addNegotiationSuggestion = async (req, res) => {
+    try {
+        const { issueId } = req.params;
+        const userId = req.user.id;
+        const { suggestion } = req.body;
+
+        if (!suggestion || !suggestion.trim()) {
+            return res.status(400).json({ success: false, message: 'Suggestion is required' });
+        }
+
+        const [issue] = await promisePool.query(
+            'SELECT * FROM issues WHERE id = ? AND status = "negotiating"',
+            [issueId]
+        );
+
+        if (issue.length === 0) {
+            return res.status(403).json({ success: false, message: 'Issue not found or not in negotiation' });
+        }
+
+        const isBuyer = issue[0].created_by === userId;
+        const isSeller = issue[0].other_party_id === userId;
+
+        if (!isBuyer && !isSeller) {
+            return res.status(403).json({ success: false, message: 'Not authorized' });
+        }
+
+        const updateField = isBuyer ? 'buyer_suggestion' : 'seller_suggestion';
+        const actorName = isBuyer ? 'Buyer' : 'Seller';
+
+        await promisePool.query(
+            `UPDATE issues SET ${updateField} = ? WHERE id = ?`,
+            [suggestion.trim(), issueId]
+        );
+
+        await promisePool.query(
+            `INSERT INTO issue_messages (issue_id, sender_id, message, is_system_message) VALUES (?, ?, ?, TRUE)`,
+            [issueId, userId, `${actorName} added a suggestion for settlement.`]
+        );
+
+        res.json({ success: true, message: 'Suggestion added successfully' });
+    } catch (error) {
+        console.error('Add suggestion error:', error);
+        res.status(500).json({ success: false, message: 'Failed to add suggestion' });
+    }
+};
+
+/**
+ * Decide on negotiation
+ */
+exports.decideNegotiation = async (req, res) => {
+    try {
+        const { issueId } = req.params;
+        const userId = req.user.id;
+        const { decision } = req.body; // 'accept' or 'decline'
+
+        if (!['accept', 'decline'].includes(decision)) {
+            return res.status(400).json({ success: false, message: 'Invalid decision' });
+        }
+
+        const [issue] = await promisePool.query(
+            'SELECT * FROM issues WHERE id = ? AND status = "negotiating"',
+            [issueId]
+        );
+
+        if (issue.length === 0) {
+            return res.status(403).json({ success: false, message: 'Issue not found or not in negotiation' });
+        }
+
+        const newStatus = decision === 'accept' ? 'settled' : 'seller_responded';
+
+        await promisePool.query(
+            `UPDATE issues SET seller_decision = ?, status = ? WHERE id = ?`,
+            [decision, newStatus, issueId]
+        );
+
+        const systemMessage = decision === 'accept' 
+            ? 'Negotiation accepted. Issue is now settled.' 
+            : 'Negotiation declined.';
+
+        await promisePool.query(
+            `INSERT INTO issue_messages (issue_id, sender_id, message, is_system_message) VALUES (?, ?, ?, TRUE)`,
+            [issueId, userId, systemMessage]
+        );
+
+        res.json({ success: true, message: 'Decision submitted successfully' });
+    } catch (error) {
+        console.error('Decide negotiation error:', error);
+        res.status(500).json({ success: false, message: 'Failed to submit decision' });
     }
 };
 

@@ -321,39 +321,153 @@ class DisputeService {
   }
 
   /**
-   * Update dispute status
+   * Update dispute status with confirmation logic
    */
-  async updateDisputeStatus(disputeId, userId, status, additionalData = {}) {
-    const updates = ['status = ?'];
-    const params = [status];
+  async updateDisputeStatus(disputeId, userId, status, confirmationType = null) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
 
-    if (status === 'closed' || status === 'resolved') {
-      updates.push('closed_at = NOW()');
+      // Check if this is a confirmation action
+      if (confirmationType === 'confirmed') {
+        const [dispute] = await connection.query(
+          'SELECT user_id, seller_id, buyer_confirmed, seller_confirmed FROM disputes WHERE id = ?',
+          [disputeId]
+        );
+
+        if (dispute.length === 0) throw new Error('Dispute not found');
+
+        const isBuyer = dispute[0].user_id === userId;
+        const isSeller = dispute[0].seller_id === userId;
+
+        if (!isBuyer && !isSeller) throw new Error('Not authorized');
+
+        const updateField = isBuyer ? 'buyer_confirmed = TRUE' : 'seller_confirmed = TRUE';
+        
+        await connection.query(
+          `UPDATE disputes SET ${updateField}, updated_at = NOW() WHERE id = ?`,
+          [disputeId]
+        );
+
+        // Check if both confirmed
+        const [updatedDispute] = await connection.query(
+          'SELECT buyer_confirmed, seller_confirmed FROM disputes WHERE id = ?',
+          [disputeId]
+        );
+
+        if (updatedDispute[0].buyer_confirmed && updatedDispute[0].seller_confirmed) {
+          await connection.query(
+            "UPDATE disputes SET status = 'settled', updated_at = NOW() WHERE id = ?",
+            [disputeId]
+          );
+        }
+
+        await connection.query(
+          `INSERT INTO dispute_messages (dispute_id, user_id, message, is_system_message, message_type)
+           VALUES (?, ?, ?, TRUE, 'status_update')`,
+          [disputeId, userId, `${isBuyer ? 'Buyer' : 'Seller'} confirmed the settlement.`]
+        );
+
+      } else {
+        // Standard status update
+        const updates = ['status = ?'];
+        const params = [status];
+
+        if (status === 'closed' || status === 'resolved' || status === 'settled') {
+          updates.push('closed_at = NOW()');
+        }
+
+        params.push(disputeId);
+
+        const [result] = await connection.query(
+          `UPDATE disputes SET ${updates.join(', ')}, updated_at = NOW() WHERE id = ?`,
+          params
+        );
+
+        if (result.affectedRows === 0) throw new Error('Dispute not found');
+
+        await connection.query(
+          `INSERT INTO dispute_messages (dispute_id, user_id, message, is_system_message, message_type)
+           VALUES (?, ?, ?, TRUE, 'status_update')`,
+          [disputeId, userId, `Dispute status changed to: ${status}`]
+        );
+      }
+
+      await connection.commit();
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
     }
+  }
 
-    if (additionalData.resolution_status) {
-      updates.push('resolution_status = ?');
-      params.push(additionalData.resolution_status);
-    }
-
-    params.push(disputeId, userId);
-
-    const [result] = await promisePool.query(
-      `UPDATE disputes SET ${updates.join(', ')}, updated_at = NOW()
-      WHERE id = ? AND user_id = ?`,
-      params
+  /**
+   * Add suggestion for negotiation
+   */
+  async addNegotiationSuggestion(disputeId, userId, suggestion) {
+    const [dispute] = await promisePool.query(
+      'SELECT user_id, seller_id FROM disputes WHERE id = ? AND status = "negotiating"',
+      [disputeId]
     );
 
-    if (result.affectedRows === 0) {
-      throw new Error('Dispute not found or access denied');
+    if (dispute.length === 0) {
+      throw new Error('Dispute not found or not in negotiation');
     }
 
-    // Add system message about status change
-    await this.addDisputeMessage(
-      disputeId,
-      userId,
-      `Dispute status changed to: ${status}`,
-      'status_update'
+    const isBuyer = dispute[0].user_id === userId;
+    const isSeller = dispute[0].seller_id === userId;
+
+    if (!isBuyer && !isSeller) {
+      throw new Error('Not authorized');
+    }
+
+    const updateField = isBuyer ? 'buyer_suggestion' : 'seller_suggestion';
+    const actorName = isBuyer ? 'Buyer' : 'Seller';
+
+    await promisePool.query(
+      `UPDATE disputes SET ${updateField} = ? WHERE id = ?`,
+      [suggestion.trim(), disputeId]
+    );
+
+    await promisePool.query(
+      `INSERT INTO dispute_messages (dispute_id, user_id, message, is_system_message, message_type) 
+       VALUES (?, ?, ?, TRUE, 'status_update')`,
+      [disputeId, userId, `${actorName} added a suggestion for settlement.`]
+    );
+
+    return true;
+  }
+
+  /**
+   * Decide on negotiation
+   */
+  async decideNegotiation(disputeId, userId, decision) {
+    const [dispute] = await promisePool.query(
+      'SELECT user_id, seller_id FROM disputes WHERE id = ? AND status = "negotiating"',
+      [disputeId]
+    );
+
+    if (dispute.length === 0) {
+      throw new Error('Dispute not found or not in negotiation');
+    }
+
+    const newStatus = decision === 'accept' ? 'settled' : 'awaiting_response';
+
+    await promisePool.query(
+      `UPDATE disputes SET seller_decision = ?, status = ? WHERE id = ?`,
+      [decision, newStatus, disputeId]
+    );
+
+    const systemMessage = decision === 'accept' 
+      ? 'Negotiation accepted. Dispute is now settled.' 
+      : 'Negotiation declined.';
+
+    await promisePool.query(
+      `INSERT INTO dispute_messages (dispute_id, user_id, message, is_system_message, message_type) 
+       VALUES (?, ?, ?, TRUE, 'status_update')`,
+      [disputeId, userId, systemMessage]
     );
 
     return true;
@@ -480,30 +594,106 @@ class DisputeService {
       throw new Error('Only the seller can respond to this dispute');
     }
 
+    // Determine new status based on decision
+    let newStatus;
+    if (decision === 'accept') newStatus = 'awaiting_response'; // buyer will proceed to resolution
+    else if (decision === 'negotiate') newStatus = 'negotiating';
+    else newStatus = 'awaiting_response'; // decline — buyer can escalate or close
+
     // Update dispute with seller's response
     const [result] = await promisePool.query(
       `UPDATE disputes 
        SET seller_response = ?, 
            seller_decision = ?, 
-           status = 'awaiting_response',
+           status = ?,
            updated_at = NOW()
        WHERE id = ?`,
-      [response, decision, disputeId]
+      [response, decision, newStatus, disputeId]
     );
 
     if (result.affectedRows === 0) {
       throw new Error('Failed to update dispute');
     }
 
+    const decisionLabel = {
+      accept: 'accepted the demand',
+      decline: 'declined the demand',
+      negotiate: 'requested to negotiate'
+    }[decision] || decision;
+
     // Add system message about seller response
     await this.addDisputeMessage(
       disputeId,
       userId,
-      `Seller has responded to the dispute with decision: ${decision}`,
+      `Seller has responded to the dispute and ${decisionLabel}.`,
       'status_update'
     );
 
     return true;
+  }
+
+  /**
+   * Submit per-user negotiation decision on the resolution
+   * Called from the Status Resolutions screen when user picks Accept or Decline
+   */
+  async submitNegotiationDecision(disputeId, userId, decision) {
+    const connection = await promisePool.getConnection();
+    try {
+      await connection.beginTransaction();
+
+      const [rows] = await connection.query(
+        'SELECT user_id, seller_id, negotiation_buyer_decision, negotiation_seller_decision FROM disputes WHERE id = ?',
+        [disputeId]
+      );
+
+      if (rows.length === 0) throw new Error('Dispute not found');
+
+      const d = rows[0];
+      const isBuyer = d.user_id === userId;
+      const isSeller = d.seller_id === userId;
+
+      if (!isBuyer && !isSeller) throw new Error('Not authorized');
+
+      const updateField = isBuyer ? 'negotiation_buyer_decision' : 'negotiation_seller_decision';
+      const actorName = isBuyer ? 'Buyer' : 'Seller';
+
+      await connection.query(
+        `UPDATE disputes SET ${updateField} = ?, updated_at = NOW() WHERE id = ?`,
+        [decision, disputeId]
+      );
+
+      // Re-fetch to check combined outcome
+      const [updated] = await connection.query(
+        'SELECT negotiation_buyer_decision, negotiation_seller_decision FROM disputes WHERE id = ?',
+        [disputeId]
+      );
+      const buyerDec = isBuyer ? decision : updated[0].negotiation_buyer_decision;
+      const sellerDec = isSeller ? decision : updated[0].negotiation_seller_decision;
+
+      // Only update overall status once BOTH have decided
+      if (buyerDec && sellerDec) {
+        const bothAccept = buyerDec === 'accept' && sellerDec === 'accept';
+        const newStatus = bothAccept ? 'settled' : 'awaiting_response';
+        await connection.query(
+          `UPDATE disputes SET status = ?, updated_at = NOW() WHERE id = ?`,
+          [newStatus, disputeId]
+        );
+      }
+
+      await connection.query(
+        `INSERT INTO dispute_messages (dispute_id, user_id, message, is_system_message, message_type)
+         VALUES (?, ?, ?, TRUE, 'status_update')`,
+        [disputeId, userId, `${actorName} ${decision === 'accept' ? 'accepted' : 'declined'} the negotiated resolution.`]
+      );
+
+      await connection.commit();
+      return true;
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
   }
 }
 

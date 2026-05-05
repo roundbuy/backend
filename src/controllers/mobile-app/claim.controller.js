@@ -278,6 +278,63 @@ class ClaimController {
             });
         }
     }
+
+    /**
+     * Seller response to claim (accept/decline/negotiate)
+     * POST /api/mobile-app/claims/:id/seller-response
+     */
+    async sendSellerResponse(req, res) {
+        try {
+            const { id } = req.params;
+            const userId = req.user.id;
+            const { response, decision } = req.body;
+
+            await claimService.sendSellerResponse(id, userId, response, decision);
+
+            res.json({ success: true, message: 'Response sent successfully' });
+        } catch (error) {
+            console.error('Seller response error:', error);
+            res.status(500).json({ success: false, message: error.message || 'Failed to send response' });
+        }
+    }
+
+    /**
+     * Submit per-user negotiation decision
+     * POST /api/mobile-app/claims/:id/submit-negotiation-decision
+     */
+    async submitNegotiationDecision(req, res) {
+        try {
+            const { id } = req.params;
+            const userId = req.user.id;
+            const { decision } = req.body;
+
+            await claimService.submitNegotiationDecision(id, userId, decision);
+
+            res.json({ success: true, message: 'Decision submitted' });
+        } catch (error) {
+            console.error('Submit decision error:', error);
+            res.status(500).json({ success: false, message: error.message || 'Failed to submit decision' });
+        }
+    }
+
+    /**
+     * Submit negotiation suggestion
+     * POST /api/mobile-app/claims/:id/submit-negotiation-suggestion
+     */
+    async submitNegotiationSuggestion(req, res) {
+        try {
+            const { id } = req.params;
+            const userId = req.user.id;
+            const { suggestion } = req.body;
+
+            await claimService.submitClaimNegotiationSuggestion(id, userId, suggestion);
+
+            res.json({ success: true, message: 'Suggestion submitted' });
+        } catch (error) {
+            console.error('Submit suggestion error:', error);
+            res.status(500).json({ success: false, message: error.message || 'Failed to submit suggestion' });
+        }
+    }
 }
 
 module.exports = new ClaimController();

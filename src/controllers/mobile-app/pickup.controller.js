@@ -1,4 +1,5 @@
 const { promisePool } = require('../../config/database');
+const { createNotificationForUser } = require('../../utils/notificationHelper');
 
 /**
  * Pickup Schedule Controller
@@ -11,115 +12,85 @@ const schedulePickup = async (req, res) => {
         const userId = req.user.id;
         const { offer_id, advertisement_id, scheduled_date, scheduled_time, description } = req.body;
 
-        // Validate required fields
-        if (!offer_id || !advertisement_id || !scheduled_date || !scheduled_time) {
+        // Validate required fields (offer_id is optional for "Buy It Now" direct checkouts)
+        if (!advertisement_id || !scheduled_date || !scheduled_time) {
             return res.status(400).json({
                 success: false,
-                message: 'Missing required fields'
+                message: 'Missing required fields',
+                error_code: 'VALIDATION_ERROR'
             });
         }
 
-        // Verify the offer exists and is accepted
-        const [offers] = await promisePool.execute(
-            `SELECT o.*, a.user_id as seller_id 
-       FROM offers o 
-       JOIN advertisements a ON o.advertisement_id = a.id 
-       WHERE o.id = ? AND o.status = 'accepted'`,
-            [offer_id]
+        // Verify the user has an order with pickup option
+        const [orders] = await promisePool.execute(
+            `SELECT * FROM orders WHERE buyer_id = ? AND advertisement_id = ? AND status IN ('confirmed', 'completed', 'shipped', 'delivered')`,
+            [userId, advertisement_id]
         );
 
-        if (offers.length === 0) {
+        if (orders.length === 0) {
             return res.status(404).json({
                 success: false,
-                message: 'Offer not found or not accepted'
+                message: 'No completed pickup order found for this item'
             });
         }
 
-        const offer = offers[0];
+        const validOrder = orders.find(o => {
+            try {
+                const notes = JSON.parse(o.notes || '{}');
+                return notes.deliveryOption === 'pickup';
+            } catch (e) {
+                return false;
+            }
+        });
 
-        // Verify user is the buyer
-        if (offer.buyer_id !== userId) {
+        if (!validOrder) {
             return res.status(403).json({
                 success: false,
-                message: 'Only the buyer can schedule a pickup'
+                message: 'This order does not use the local pickup option.'
             });
         }
 
-        // Check if pickup already exists for this offer
+        // Get advertisement info to determine seller ID
+        const [ads] = await promisePool.execute('SELECT user_id FROM advertisements WHERE id = ?', [advertisement_id]);
+        if (ads.length === 0) {
+            return res.status(404).json({ success: false, message: 'Ad not found' });
+        }
+        const sellerId = ads[0].user_id;
+
+        // Check if pickup already exists for this advertisement and buyer
         const [existingPickup] = await promisePool.execute(
-            'SELECT id FROM pickup_schedules WHERE offer_id = ? AND status NOT IN ("cancelled")',
-            [offer_id]
+            'SELECT id FROM pickup_schedules WHERE advertisement_id = ? AND buyer_id = ? AND status NOT IN ("cancelled")',
+            [advertisement_id, userId]
         );
 
         if (existingPickup.length > 0) {
             return res.status(400).json({
                 success: false,
-                message: 'Pickup already scheduled for this offer'
+                message: 'Pickup already scheduled for this item'
             });
         }
 
-        // Check if fee has already been paid for this offer (via Auto-Deduction)
-        const [feeTransactions] = await promisePool.execute(
-            `SELECT * FROM wallet_transactions 
-             WHERE reference_type = 'offer_fee' 
-             AND reference_id = ? 
-             AND status = 'completed'`,
-            [offer_id]
-        );
-
-        let isPrePaid = false;
-        if (feeTransactions.length > 0) {
-            isPrePaid = true;
-        }
-
-        // Get current fees
-        const [fees] = await promisePool.execute(
-            'SELECT fee_type, amount, is_percentage FROM pickup_fees WHERE is_active = TRUE'
-        );
-
-        let pickupFee = 0;
-        let safeServiceFee = 0;
-        let buyerFee = 0;
-        let itemFeePercentage = 0;
-
-        fees.forEach(fee => {
-            if (fee.fee_type === 'pickup_fee') pickupFee = parseFloat(fee.amount);
-            if (fee.fee_type === 'safe_service_fee') safeServiceFee = parseFloat(fee.amount);
-            if (fee.fee_type === 'buyer_fee') buyerFee = parseFloat(fee.amount);
-            if (fee.fee_type === 'item_fee_percentage') itemFeePercentage = parseFloat(fee.amount);
-        });
-
-        // Get the offer price
-        const offerPrice = parseFloat(offer.offered_price || 0);
-
-        // Calculate item fee based on percentage of offer price
-        const itemFee = (offerPrice * itemFeePercentage) / 100;
-
-        // For now, no discount - can be added later based on business logic
+        // Set all legacy pickup fees to 0 because payment was fully handled in Checkout (orders table)
+        const pickupFee = 0;
+        const safeServiceFee = 0;
+        const buyerFee = 0;
+        const finalItemFee = 0;
         const itemFeeDiscount = 0;
-        const finalItemFee = itemFee - itemFeeDiscount;
+        const totalFee = 0;
+        const offerPrice = parseFloat(validOrder.amount || 0);
+        const initialPaymentStatus = 'paid';
 
-        const totalFee = pickupFee + safeServiceFee + buyerFee + finalItemFee;
-
-        // If pre-paid, we only consider the item fee/buyer fee that WAS paid. 
-        // For simplicity, if pre-paid, we assume the fixed fees are paid. 
-        // But what about item_fee? "Offer Accepted" mainly charges the 'Buyer's Fee' (Usage fee).
-        // The instructions say "charge Buyer’s Fee from there automatically".
-        // Usually 'Buyer's Fee' = Pickup Fee + Service Fee. 
-        // Item Fee (percentage) might be separate?
-        // Let's assume if isPrePaid, the 'payment_status' starts as 'paid' (or partially paid? Instructions imply full automation).
-        // Let's set it to 'paid' if pre-paid.
-
-        const initialPaymentStatus = isPrePaid ? 'paid' : 'unpaid';
+        // Use safe value for insert
+        const safeOfferId = offer_id || null;
 
         // Create pickup schedule
         const [result] = await promisePool.execute(
-            `INSERT INTO pickup_schedules 
-       (offer_id, advertisement_id, buyer_id, seller_id, scheduled_date, scheduled_time, 
-        description, pickup_fee, safe_service_fee, buyer_fee, item_fee, item_fee_discount, 
+            `INSERT INTO pickup_schedules
+       (offer_id, advertisement_id, buyer_id, seller_id, scheduled_date, scheduled_time,
+        description, pickup_fee, safe_service_fee, buyer_fee, item_fee, item_fee_discount,
         total_fee, offer_price, status, payment_status)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
-            [offer_id, advertisement_id, userId, offer.seller_id, scheduled_date, scheduled_time,
+            [safeOfferId, advertisement_id, userId, sellerId, scheduled_date, scheduled_time,
                 description, pickupFee, safeServiceFee, buyerFee, finalItemFee, itemFeeDiscount,
                 totalFee, offerPrice, initialPaymentStatus]
         );
@@ -141,23 +112,34 @@ const schedulePickup = async (req, res) => {
 
         // Create notification for seller
         try {
-            await promisePool.execute(
-                `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                    offer.seller_id,
-                    'popup',
-                    'New Pickup Scheduled',
-                    `${pickup[0].buyer_name} has scheduled a pickup for ${scheduled_date}`,
-                    JSON.stringify({
-                        pickup_id: result.insertId,
-                        offer_id: offer_id,
-                        advertisement_id: advertisement_id,
-                        action: 'pickup_scheduled'
-                    }),
-                    false
-                ]
-            );
+            await createNotificationForUser({
+                user_id: sellerId,
+                type: 'popup',
+                title: 'New Pickup Scheduled',
+                message: `${pickup[0].buyer_name} has scheduled a pickup for ${scheduled_date}`,
+                action_type: 'open_screen',
+                action_data: {
+                    pickup_id: result.insertId,
+                    offer_id: offer_id,
+                    advertisement_id: advertisement_id,
+                    action: 'pickup_scheduled'
+                }
+            });
+
+            // Create notification for buyer
+            await createNotificationForUser({
+                user_id: userId,
+                type: 'popup',
+                title: 'Pickup Scheduled',
+                message: `You have scheduled a pickup for ${scheduled_date}`,
+                action_type: 'open_screen',
+                action_data: {
+                    pickup_id: result.insertId,
+                    offer_id: offer_id,
+                    advertisement_id: advertisement_id,
+                    action: 'pickup_scheduled'
+                }
+            });
         } catch (notifError) {
             console.error('Error creating notification:', notifError);
         }
@@ -181,7 +163,7 @@ const schedulePickup = async (req, res) => {
 const getUserPickups = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { type = 'all', status, payment_status, page = 1, limit = 20 } = req.query;
+        const { type = 'all', status, payment_status, advertisement_id, page = 1, limit = 20 } = req.query;
         const offset = (page - 1) * limit;
 
         let whereConditions = [];
@@ -209,6 +191,12 @@ const getUserPickups = async (req, res) => {
         if (payment_status) {
             whereConditions.push('ps.payment_status = ?');
             queryParams.push(payment_status);
+        }
+
+        // Filter by advertisement ID
+        if (advertisement_id) {
+            whereConditions.push('ps.advertisement_id = ?');
+            queryParams.push(advertisement_id);
         }
 
         const whereClause = whereConditions.length > 0
@@ -373,21 +361,30 @@ const confirmPickup = async (req, res) => {
 
         // Create notification for buyer
         try {
-            await promisePool.execute(
-                `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                    pickup.buyer_id,
-                    'popup',
-                    'Pickup Confirmed',
-                    `Your pickup has been confirmed for ${pickup.scheduled_date}. Please complete the payment.`,
-                    JSON.stringify({
-                        pickup_id: pickupId,
-                        action: 'pickup_confirmed'
-                    }),
-                    false
-                ]
-            );
+            await createNotificationForUser({
+                user_id: pickup.buyer_id,
+                type: 'popup',
+                title: 'Pickup Confirmed',
+                message: `Your pickup has been confirmed for ${pickup.scheduled_date}. Please complete the payment.`,
+                action_type: 'open_screen',
+                action_data: {
+                    pickup_id: pickupId,
+                    action: 'pickup_confirmed'
+                }
+            });
+
+            // Create notification for seller (confirmation for them too)
+            await createNotificationForUser({
+                user_id: userId,
+                type: 'popup',
+                title: 'Pickup Confirmed',
+                message: `You have confirmed the pickup for ${pickup.scheduled_date}`,
+                action_type: 'open_screen',
+                action_data: {
+                    pickup_id: pickupId,
+                    action: 'pickup_confirmed'
+                }
+            });
         } catch (notifError) {
             console.error('Error creating notification:', notifError);
         }
@@ -411,7 +408,8 @@ const reschedulePickup = async (req, res) => {
     try {
         const userId = req.user.id;
         const { pickupId } = req.params;
-        const { scheduled_date, scheduled_time, reschedule_reason } = req.body;
+        const { scheduled_date, scheduled_time } = req.body;
+        const reschedule_reason = req.body.reschedule_reason || req.body.description || null;
 
         if (!scheduled_date || !scheduled_time) {
             return res.status(400).json({
@@ -447,31 +445,41 @@ const reschedulePickup = async (req, res) => {
         await promisePool.execute(
             `UPDATE pickup_schedules 
        SET scheduled_date = ?, scheduled_time = ?, status = 'rescheduled', 
-           reschedule_count = reschedule_count + 1, reschedule_reason = ?
+           reschedule_count = reschedule_count + 1, reschedule_reason = ?, description = ?
        WHERE id = ?`,
-            [scheduled_date, scheduled_time, reschedule_reason, pickupId]
+            [scheduled_date, scheduled_time, reschedule_reason, reschedule_reason, pickupId]
         );
 
-        // Notify the other party
-        const notifyUserId = pickup.buyer_id === userId ? pickup.seller_id : pickup.buyer_id;
-        const userRole = pickup.buyer_id === userId ? 'buyer' : 'seller';
-
+        // Notify both parties
         try {
-            await promisePool.execute(
-                `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                    notifyUserId,
-                    'popup',
-                    'Pickup Rescheduled',
-                    `The ${userRole} has rescheduled the pickup to ${scheduled_date} at ${scheduled_time}`,
-                    JSON.stringify({
-                        pickup_id: pickupId,
-                        action: 'pickup_rescheduled'
-                    }),
-                    false
-                ]
-            );
+            const notifyUserId = pickup.buyer_id === userId ? pickup.seller_id : pickup.buyer_id;
+            const userRole = pickup.buyer_id === userId ? 'buyer' : 'seller';
+
+            // Notify the other party
+            await createNotificationForUser({
+                user_id: notifyUserId,
+                type: 'popup',
+                title: 'Pickup Rescheduled',
+                message: `The ${userRole} has rescheduled the pickup to ${scheduled_date} at ${scheduled_time}`,
+                action_type: 'open_screen',
+                action_data: {
+                    pickup_id: pickupId,
+                    action: 'pickup_rescheduled'
+                }
+            });
+
+            // Notify the initiator
+            await createNotificationForUser({
+                user_id: userId,
+                type: 'popup',
+                title: 'Pickup Rescheduled',
+                message: `You have rescheduled the pickup to ${scheduled_date} at ${scheduled_time}`,
+                action_type: 'open_screen',
+                action_data: {
+                    pickup_id: pickupId,
+                    action: 'pickup_rescheduled'
+                }
+            });
         } catch (notifError) {
             console.error('Error creating notification:', notifError);
         }
@@ -495,7 +503,7 @@ const cancelPickup = async (req, res) => {
     try {
         const userId = req.user.id;
         const { pickupId } = req.params;
-        const { cancellation_reason } = req.body;
+        const cancellation_reason = req.body?.cancellation_reason || null;
 
         // Get pickup
         const [pickups] = await promisePool.execute(
@@ -526,25 +534,35 @@ const cancelPickup = async (req, res) => {
             ['cancelled', cancellation_reason, pickupId]
         );
 
-        // Notify the other party
-        const notifyUserId = pickup.buyer_id === userId ? pickup.seller_id : pickup.buyer_id;
-
+        // Notify both parties
         try {
-            await promisePool.execute(
-                `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-                [
-                    notifyUserId,
-                    'popup',
-                    'Pickup Cancelled',
-                    `The pickup scheduled for ${pickup.scheduled_date} has been cancelled.`,
-                    JSON.stringify({
-                        pickup_id: pickupId,
-                        action: 'pickup_cancelled'
-                    }),
-                    false
-                ]
-            );
+            const notifyUserId = pickup.buyer_id === userId ? pickup.seller_id : pickup.buyer_id;
+
+            // Notify the other party
+            await createNotificationForUser({
+                user_id: notifyUserId,
+                type: 'popup',
+                title: 'Pickup Cancelled',
+                message: `The pickup scheduled for ${pickup.scheduled_date} has been cancelled.`,
+                action_type: 'open_screen',
+                action_data: {
+                    pickup_id: pickupId,
+                    action: 'pickup_cancelled'
+                }
+            });
+
+            // Notify the initiator
+            await createNotificationForUser({
+                user_id: userId,
+                type: 'popup',
+                title: 'Pickup Cancelled',
+                message: `You have cancelled the pickup scheduled for ${pickup.scheduled_date}`,
+                action_type: 'open_screen',
+                action_data: {
+                    pickup_id: pickupId,
+                    action: 'pickup_cancelled'
+                }
+            });
         } catch (notifError) {
             console.error('Error creating notification:', notifError);
         }

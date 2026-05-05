@@ -199,68 +199,90 @@ const sendMessage = async (req, res) => {
     const advertisement = adCheck[0];
     const receiverId = advertisement.seller_id;
 
-    // Don't allow messaging yourself (if user is messaging their own ad)
-    if (senderId === receiverId) {
-      return res.status(400).json({
-        success: false,
-        message: 'Cannot send message to yourself'
-      });
-    }
-
     // Check message content for moderation violations
-    const moderationResult = await checkTextModeration(message);
-    if (!moderationResult.isClean) {
-      const violationCategories = moderationResult.foundWords.map(w => w.category);
-      const violationWords = moderationResult.foundWords.map(w => w.word);
+    const isImageUpload = message && message.startsWith('http') && message.includes('/uploads/image-');
+    if (!isImageUpload) {
+      const moderationResult = await checkTextModeration(message);
+      if (!moderationResult.isClean) {
+        const violationCategories = moderationResult.foundWords.map(w => w.category);
+        const violationWords = moderationResult.foundWords.map(w => w.word);
 
-      console.log(`[CHAT MODERATION] Message blocked for user ${senderId}:`, {
-        violations: violationWords,
-        categories: violationCategories,
-        severity: moderationResult.severity
-      });
-
-      return res.status(400).json({
-        success: false,
-        message: 'Your message contains prohibited content and cannot be sent.',
-        error_code: 'CONTENT_MODERATION_FAILED',
-        details: {
-          violations: violationCategories.includes('contact_info')
-            ? ['Phone numbers, emails, and contact information are not allowed in messages.']
-            : ['Your message contains inappropriate content.'],
+        console.log(`[CHAT MODERATION] Message blocked for user ${senderId}:`, {
+          violations: violationWords,
+          categories: violationCategories,
           severity: moderationResult.severity
-        }
-      });
-    }
+        });
 
-    // Determine buyer and seller for conversation
-    // senderId is always the buyer (interested party)
-    // receiverId (advertisement.seller_id) is always the seller
-    const buyerId = senderId;
-    const sellerId = advertisement.seller_id;
+        return res.status(400).json({
+          success: false,
+          message: 'Your message contains prohibited content and cannot be sent.',
+          error_code: 'CONTENT_MODERATION_FAILED',
+          details: {
+            violations: violationCategories.includes('contact_info')
+              ? ['Phone numbers, emails, and contact information are not allowed in messages.']
+              : ['Your message contains inappropriate content.'],
+            severity: moderationResult.severity
+          }
+        });
+      }
+    }
 
     // Get or create conversation
     let conversationId;
-    const [existingConversation] = await promisePool.execute(`
-      SELECT id FROM conversations
-      WHERE advertisement_id = ? AND buyer_id = ? AND seller_id = ?
-    `, [advertisement_id, buyerId, sellerId]);
+    let actualReceiverId = receiverId; // Default to seller as receiver (for new conversations)
 
-    if (existingConversation.length > 0) {
-      conversationId = existingConversation[0].id;
+    // If a conversation_id is explicitly passed from the frontend, use it to determine the correct receiver
+    if (req.body.conversation_id) {
+      conversationId = req.body.conversation_id;
+      const [existingConv] = await promisePool.execute(`
+         SELECT buyer_id, seller_id FROM conversations WHERE id = ?
+       `, [conversationId]);
+
+      if (existingConv.length > 0) {
+        const conv = existingConv[0];
+        // If the sender is the buyer, receiver is seller. If sender is seller, receiver is buyer.
+        actualReceiverId = (senderId === conv.buyer_id) ? conv.seller_id : conv.buyer_id;
+
+        // If the sender is somehow neither, default back to seller
+        if (senderId !== conv.buyer_id && senderId !== conv.seller_id) {
+          return res.status(403).json({ success: false, message: 'Not authorized for this conversation' });
+        }
+      }
     } else {
-      // Create new conversation
-      const [result] = await promisePool.execute(`
-        INSERT INTO conversations (advertisement_id, buyer_id, seller_id)
-        VALUES (?, ?, ?)
-      `, [advertisement_id, buyerId, sellerId]);
-      conversationId = result.insertId;
+      // No conversation ID provided, check if one exists between this buyer and seller
+      const buyerId = senderId;
+      const sellerId = advertisement.seller_id;
+
+      // Don't allow messaging yourself (if user is messaging their own ad as a new inquiry)
+      if (senderId === sellerId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot send message to yourself'
+        });
+      }
+
+      const [existingConversation] = await promisePool.execute(`
+          SELECT id FROM conversations
+          WHERE advertisement_id = ? AND buyer_id = ? AND seller_id = ?
+        `, [advertisement_id, buyerId, sellerId]);
+
+      if (existingConversation.length > 0) {
+        conversationId = existingConversation[0].id;
+      } else {
+        // Create new conversation
+        const [result] = await promisePool.execute(`
+            INSERT INTO conversations (advertisement_id, buyer_id, seller_id)
+            VALUES (?, ?, ?)
+          `, [advertisement_id, buyerId, sellerId]);
+        conversationId = result.insertId;
+      }
     }
 
     // Insert message
     const [messageResult] = await promisePool.execute(`
       INSERT INTO messages (sender_id, receiver_id, advertisement_id, conversation_id, message)
       VALUES (?, ?, ?, ?, ?)
-    `, [senderId, receiverId, advertisement_id, conversationId, message]);
+    `, [senderId, actualReceiverId, advertisement_id, conversationId, message]);
 
     // Update conversation last_message_at
     await promisePool.execute(`
@@ -288,7 +310,7 @@ const sendMessage = async (req, res) => {
     // Create notification for receiver
     try {
       await createNotificationForUser({
-        user_id: receiverId,
+        user_id: actualReceiverId,
         type: 'popup',
         title: 'New Message',
         message: `${newMessage[0].sender_name} sent you a message`,

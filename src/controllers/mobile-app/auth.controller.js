@@ -152,15 +152,56 @@ const verifyEmail = async (req, res) => {
       [user.id]
     );
 
+    // Get user with subscription plan details (like login)
+    const [updatedUsers] = await promisePool.query(
+      `SELECT u.id, u.email, u.username, u.avatar, u.password_hash, u.full_name, u.role, u.is_active, u.is_verified, u.language_preference,
+              u.subscription_plan_id, u.subscription_start_date, u.subscription_end_date, u.last_username_change, u.referral_code,
+              sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
+       FROM users u
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.id = ?`,
+      [user.id]
+    );
+
+    const updatedUser = updatedUsers[0];
+
+    // Check if user has subscription
+    const [subscriptions] = await promisePool.query(
+      `SELECT id FROM user_subscriptions
+       WHERE user_id = ? AND status = 'active' AND end_date > NOW()
+       LIMIT 1`,
+      [user.id]
+    );
+
+    const hasSubscription = subscriptions.length > 0;
+
+    // Generate tokens for auto-login
+    const tokens = generateTokens(updatedUser.id, updatedUser.role);
+
     res.json({
       success: true,
       message: 'Email verified successfully',
       data: {
         user: {
-          id: user.id,
-          email: user.email,
-          is_verified: true
-        }
+          id: updatedUser.id,
+          email: updatedUser.email,
+          username: updatedUser.username,
+          avatar: updatedUser.avatar,
+          full_name: updatedUser.full_name,
+          role: updatedUser.role,
+          language_preference: updatedUser.language_preference,
+          is_verified: updatedUser.is_verified,
+          has_active_subscription: hasSubscription,
+          requires_subscription: !hasSubscription,
+          subscription_plan_id: updatedUser.subscription_plan_id,
+          subscription_plan_slug: updatedUser.subscription_plan_slug,
+          subscription_plan_name: updatedUser.subscription_plan_name,
+          subscription_start_date: updatedUser.subscription_start_date,
+          subscription_end_date: updatedUser.subscription_end_date,
+          last_username_change: updatedUser.last_username_change,
+          referral_code: updatedUser.referral_code
+        },
+        ...tokens
       }
     });
   } catch (error) {

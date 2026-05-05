@@ -1,4 +1,5 @@
 const { promisePool } = require('../../config/database');
+const { generateTokens } = require('../../utils/jwt');
 const { sendWelcomeEmail } = require('../../services/email.service');
 
 // Function to get Stripe instance with configured key
@@ -80,22 +81,26 @@ const getPlans = async (req, res) => {
     const plansWithPrices = plans.map(plan => {
       const prices = pricesByPlan[plan.id] || [];
 
-      // Calculate total price with tax for target currency
-      const targetPrice = prices.find(p => p.currency_code === targetCurrency);
+      // Calculate total price with tax for target currency (fallback to default if not found)
+      let targetPrice = prices.find(p => p.currency_code === targetCurrency);
+      if (!targetPrice && prices.length > 0) {
+        targetPrice = prices.find(p => p.is_default) || prices[0];
+      }
+
       let totalPrice = 0;
       let taxAmount = 0;
 
       if (targetPrice) {
-        const price = targetPrice.price;
-        const taxRate = targetPrice.tax_rate;
-        taxAmount = (price * taxRate) / 100;
-        totalPrice = price + taxAmount;
+        const price = parseFloat(targetPrice.price || 0);
+        const taxRate = parseFloat(targetPrice.tax_rate || 0);
+        taxAmount = parseFloat(((price * taxRate) / 100).toFixed(2));
+        totalPrice = parseFloat((price + taxAmount).toFixed(2));
       }
 
       // Calculate renewal price
-      const renewalPrice = plan.renewal_price || (targetPrice ? targetPrice.price : 0);
-      const renewalTaxAmount = targetPrice ? (renewalPrice * targetPrice.tax_rate) / 100 : 0;
-      const renewalTotalPrice = renewalPrice + renewalTaxAmount;
+      const renewalPrice = parseFloat(plan.renewal_price || (targetPrice ? targetPrice.price : 0));
+      const renewalTaxAmount = targetPrice ? parseFloat(((renewalPrice * targetPrice.tax_rate) / 100).toFixed(2)) : 0;
+      const renewalTotalPrice = parseFloat((renewalPrice + renewalTaxAmount).toFixed(2));
 
       return {
         id: plan.id,
@@ -665,6 +670,20 @@ const purchasePlan = async (req, res) => {
       }
     }
 
+    // Get updated user details (like login/verifyEmail)
+    const [updatedUsers] = await promisePool.query(
+      `SELECT u.id, u.email, u.username, u.avatar, u.password_hash, u.full_name, u.role, u.is_active, u.is_verified, u.language_preference,
+              u.subscription_plan_id, u.subscription_start_date, u.subscription_end_date, u.last_username_change, u.referral_code,
+              sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
+       FROM users u
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.id = ?`,
+      [userId]
+    );
+
+    const updatedUser = updatedUsers[0];
+    const tokens = generateTokens(updatedUser.id, updatedUser.role);
+
     res.json({
       success: true,
       message: 'Subscription purchased successfully',
@@ -678,14 +697,34 @@ const purchasePlan = async (req, res) => {
           currency: currency_code,
           payment_id: paymentIntent.id
         },
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          username: updatedUser.username,
+          avatar: updatedUser.avatar,
+          full_name: updatedUser.full_name,
+          role: updatedUser.role,
+          language_preference: updatedUser.language_preference,
+          is_verified: updatedUser.is_verified,
+          has_active_subscription: true,
+          requires_subscription: false,
+          subscription_plan_id: updatedUser.subscription_plan_id,
+          subscription_plan_slug: updatedUser.subscription_plan_slug,
+          subscription_plan_name: updatedUser.subscription_plan_name,
+          subscription_start_date: updatedUser.subscription_start_date,
+          subscription_end_date: updatedUser.subscription_end_date,
+          last_username_change: updatedUser.last_username_change,
+          referral_code: updatedUser.referral_code
+        },
         transaction: {
           id: paymentIntent.id,
           amount: totalAmount,
           currency: currency_code,
           status: 'completed',
           timestamp: new Date().toISOString(),
-          session_id: paymentIntent.id // Using payment intent ID as session ID
-        }
+          session_id: paymentIntent.id
+        },
+        ...tokens
       }
     });
   } catch (error) {
@@ -913,6 +952,20 @@ const activateFreePlan = async (req, res) => {
       [plan.id, startDate, endDate, userId]
     );
 
+    // Get updated user details
+    const [updatedUsers] = await promisePool.query(
+      `SELECT u.id, u.email, u.username, u.avatar, u.password_hash, u.full_name, u.role, u.is_active, u.is_verified, u.language_preference,
+              u.subscription_plan_id, u.subscription_start_date, u.subscription_end_date, u.last_username_change, u.referral_code,
+              sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
+       FROM users u
+       LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+       WHERE u.id = ?`,
+      [userId]
+    );
+
+    const updatedUser = updatedUsers[0];
+    const tokens = generateTokens(updatedUser.id, updatedUser.role);
+
     res.json({
       success: true,
       message: 'Free plan activated successfully',
@@ -925,7 +978,27 @@ const activateFreePlan = async (req, res) => {
           end_date: endDate,
           amount_paid: 0,
           currency: 'INR'
-        }
+        },
+        user: {
+          id: updatedUser.id,
+          email: updatedUser.email,
+          username: updatedUser.username,
+          avatar: updatedUser.avatar,
+          full_name: updatedUser.full_name,
+          role: updatedUser.role,
+          language_preference: updatedUser.language_preference,
+          is_verified: updatedUser.is_verified,
+          has_active_subscription: true,
+          requires_subscription: false,
+          subscription_plan_id: updatedUser.subscription_plan_id,
+          subscription_plan_slug: updatedUser.subscription_plan_slug,
+          subscription_plan_name: updatedUser.subscription_plan_name,
+          subscription_start_date: updatedUser.subscription_start_date,
+          subscription_end_date: updatedUser.subscription_end_date,
+          last_username_change: updatedUser.last_username_change,
+          referral_code: updatedUser.referral_code
+        },
+        ...tokens
       }
     });
   } catch (error) {

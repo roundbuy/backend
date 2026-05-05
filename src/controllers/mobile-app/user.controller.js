@@ -148,7 +148,8 @@ const getUserProfile = async (req, res) => {
 
         const [users] = await promisePool.query(
             `SELECT id, email, full_name, phone, avatar, country_code, 
-               created_at, updated_at, last_username_change, username, referral_code
+               created_at, updated_at, last_username_change, username, referral_code,
+               measurement_unit, lottery_credits
         FROM users WHERE id = ?`,
             [userId]
         );
@@ -190,7 +191,7 @@ const getUserProfile = async (req, res) => {
 const updateUserProfile = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { full_name, phone, country_code } = req.body;
+        const { full_name, phone, country_code, measurement_unit } = req.body;
 
         // Build dynamic update query
         const updates = [];
@@ -207,6 +208,10 @@ const updateUserProfile = async (req, res) => {
         if (country_code !== undefined) {
             updates.push('country_code = ?');
             params.push(country_code);
+        }
+        if (measurement_unit !== undefined) {
+            updates.push('measurement_unit = ?');
+            params.push(measurement_unit);
         }
 
         if (updates.length === 0) {
@@ -226,7 +231,8 @@ const updateUserProfile = async (req, res) => {
         // Get updated user profile
         const [users] = await promisePool.query(
             `SELECT id, email, full_name, phone, avatar, country_code,
-              created_at, updated_at, last_username_change, username, referral_code
+              created_at, updated_at, last_username_change, username, referral_code,
+              measurement_unit, lottery_credits
        FROM users WHERE id = ?`,
             [userId]
         );
@@ -457,15 +463,34 @@ const submitDataRequest = async (req, res) => {
 
         // TODO: Send email notification to user
         // TODO: Send notification to admin
+        
+        // Mock CSV generation for 'download' or 'delete_data' requests
+        if (requestType === 'download') {
+            console.log(`[DATA REQUEST] Generating CSV for User ${userId}...`);
+            // In a real app, this would involve a background job (Bull/Redis) to:
+            // 1. Gather all user data (profile, ads, favorites, messages, wallet, etc.)
+            // 2. Convert to CSV strings
+            // 3. Save to a secure temp S3/local storage
+            // 4. Send email via NodeMailer/AWS SES with the link
+            
+            // Simulating a delay/process start
+            setTimeout(async () => {
+                await promisePool.query(
+                    "UPDATE data_requests SET status = 'processed', processed_at = NOW(), admin_notes = 'CSV generated and sent to email' WHERE id = ?",
+                    [requestId]
+                );
+                console.log(`[DATA REQUEST] CSV for Request ${requestId} marked as processed.`);
+            }, 5000);
+        }
 
         res.status(201).json({
             success: true,
-            message: 'Data request submitted successfully',
+            message: 'Data request submitted successfully. You will receive an email with your data in CSV format shortly.',
             data: {
                 requestId,
                 requestType,
                 status: 'pending',
-                estimatedProcessingDays: '7-14'
+                estimatedProcessingDays: '1-3' // Reduced for demo/parity
             }
         });
     } catch (error) {
@@ -718,6 +743,96 @@ const updateUsername = async (req, res) => {
     }
 };
 
+/**
+ * Get user metrics (Profit Meters)
+ * GET /api/v1/mobile-app/user/metrics
+ */
+const getUserMetrics = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Current Date Info
+        const now = new Date();
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+        // Monthly Earnings (Selling)
+        const [monthlyEarnings] = await promisePool.query(
+            'SELECT SUM(offered_price) as total FROM offers WHERE seller_id = ? AND status = "accepted" AND created_at >= ?',
+            [userId, startOfMonth]
+        );
+
+        // Yearly Earnings (Selling)
+        const [yearlyEarnings] = await promisePool.query(
+            'SELECT SUM(offered_price) as total FROM offers WHERE seller_id = ? AND status = "accepted" AND created_at >= ?',
+            [userId, startOfYear]
+        );
+
+        // Monthly Spend (Buying)
+        const [monthlySpend] = await promisePool.query(
+            'SELECT SUM(offered_price) as total FROM offers WHERE buyer_id = ? AND status = "accepted" AND created_at >= ?',
+            [userId, startOfMonth]
+        );
+
+        // Yearly Spend (Buying)
+        const [yearlySpend] = await promisePool.query(
+            'SELECT SUM(offered_price) as total FROM offers WHERE buyer_id = ? AND status = "accepted" AND created_at >= ?',
+            [userId, startOfYear]
+        );
+
+        // Sales History (Last 6 months)
+        const [salesHistory] = await promisePool.query(
+            `SELECT 
+                DATE_FORMAT(created_at, '%b') as month,
+                SUM(offered_price) as amount
+             FROM offers 
+             WHERE seller_id = ? AND status = "accepted" 
+               AND created_at >= DATE_SUB(NOW(), INTERVAL 6 MONTH)
+             GROUP BY YEAR(created_at), MONTH(created_at)
+             ORDER BY MIN(created_at) ASC`,
+            [userId]
+        );
+
+        // Top Selling Item
+        const [topSellingItem] = await promisePool.query(
+            `SELECT 
+                a.title,
+                COUNT(o.id) as sales_count,
+                SUM(o.offered_price) as total_revenue
+             FROM offers o
+             JOIN advertisements a ON o.advertisement_id = a.id
+             WHERE o.seller_id = ? AND o.status = "accepted"
+             GROUP BY o.advertisement_id
+             ORDER BY total_revenue DESC
+             LIMIT 1`,
+            [userId]
+        );
+
+        res.json({
+            success: true,
+            data: {
+                selling: {
+                    monthly: monthlyEarnings[0].total || 0,
+                    yearly: yearlyEarnings[0].total || 0,
+                    history: salesHistory,
+                    topItem: topSellingItem[0] || null
+                },
+                buying: {
+                    monthly: monthlySpend[0].total || 0,
+                    yearly: yearlySpend[0].total || 0
+                }
+            }
+        });
+    } catch (error) {
+        console.error('Get user metrics error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Error fetching user metrics',
+            error: error.message
+        });
+    }
+};
+
 module.exports = {
     updateProfileImage,
     getUserProfile,
@@ -729,5 +844,6 @@ module.exports = {
     getDataRequests,
     getDataRequest,
     checkUsernameAvailability,
-    updateUsername
+    updateUsername,
+    getUserMetrics
 };

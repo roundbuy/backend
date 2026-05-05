@@ -22,7 +22,7 @@ const checkSubscription = async (req, res, next) => {
       [userId]
     );
 
-    if (subscriptions.length === 0) {
+    if (subscriptions.length === 0 && process.env.NODE_ENV === 'production') {
       return res.status(403).json({
         success: false,
         message: 'Active subscription required to access this feature',
@@ -31,15 +31,27 @@ const checkSubscription = async (req, res, next) => {
     }
 
     // Attach subscription info to request for use in controllers
+    // If no subscription in dev, use a mock one
+    const sub = subscriptions[0] || {
+      id: 0,
+      subscription_plan_id: 1,
+      plan_name: 'Development Plan',
+      plan_slug: 'dev',
+      features: '{"max_ads": -1}',
+      start_date: new Date(),
+      end_date: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365),
+      status: 'active'
+    };
+
     req.subscription = {
-      id: subscriptions[0].id,
-      plan_id: subscriptions[0].subscription_plan_id,
-      plan_name: subscriptions[0].plan_name,
-      plan_slug: subscriptions[0].plan_slug,
-      features: JSON.parse(subscriptions[0].features || '{}'),
-      start_date: subscriptions[0].start_date,
-      end_date: subscriptions[0].end_date,
-      status: subscriptions[0].status
+      id: sub.id,
+      plan_id: sub.subscription_plan_id,
+      plan_name: sub.plan_name,
+      plan_slug: sub.plan_slug,
+      features: JSON.parse(sub.features || '{}'),
+      start_date: sub.start_date,
+      end_date: sub.end_date,
+      status: sub.status
     };
 
     next();
@@ -74,7 +86,7 @@ const checkFeatureLimit = (feature) => {
       // Check specific feature limits
       if (feature === 'max_ads') {
         const maxAds = features.max_ads || 0;
-        
+
         // -1 means unlimited
         if (maxAds === -1) {
           return next();

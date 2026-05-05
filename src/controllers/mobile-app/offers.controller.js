@@ -31,6 +31,16 @@ const createOffer = async (req, res) => {
     }
 
     const ad = ads[0];
+    const itemPrice = parseFloat(ad.price);
+    const minOffer = itemPrice * 0.6;
+
+    if (parseFloat(price) < minOffer) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: 'Offers lower than 60% of the asking price are not possible, to reflect items true value.'
+      });
+    }
 
     if (ad.seller_id === userId) {
       await connection.rollback();

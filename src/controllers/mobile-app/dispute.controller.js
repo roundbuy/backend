@@ -384,21 +384,11 @@ class DisputeController {
    */
   async updateDisputeStatus(req, res) {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return res.status(400).json({
-          success: false,
-          errors: errors.array()
-        });
-      }
-
       const userId = req.user.id;
       const disputeId = req.params.id;
-      const { status, resolution_status } = req.body;
+      const { status, confirmation } = req.body;
 
-      await disputeService.updateDisputeStatus(disputeId, userId, status, {
-        resolution_status
-      });
+      await disputeService.updateDisputeStatus(disputeId, userId, status, confirmation);
 
       res.json({
         success: true,
@@ -408,8 +398,65 @@ class DisputeController {
       console.error('Update dispute status error:', error);
       res.status(500).json({
         success: false,
-        message: error.message || 'Error updating dispute status',
-        error: error.message
+        message: error.message || 'Error updating dispute status'
+      });
+    }
+  }
+
+  /**
+   * Add negotiation suggestion
+   * POST /api/mobile-app/disputes/:id/suggestions
+   */
+  async addNegotiationSuggestion(req, res) {
+    try {
+      const userId = req.user.id;
+      const disputeId = req.params.id;
+      const { suggestion } = req.body;
+
+      if (!suggestion) {
+        return res.status(400).json({ success: false, message: 'Suggestion is required' });
+      }
+
+      await disputeService.addNegotiationSuggestion(disputeId, userId, suggestion);
+
+      res.json({
+        success: true,
+        message: 'Suggestion added successfully'
+      });
+    } catch (error) {
+      console.error('Add negotiation suggestion error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error adding suggestion'
+      });
+    }
+  }
+
+  /**
+   * Decide on negotiation
+   * POST /api/mobile-app/disputes/:id/decide-negotiation
+   */
+  async decideNegotiation(req, res) {
+    try {
+      const userId = req.user.id;
+      const disputeId = req.params.id;
+      const { decision } = req.body;
+
+      if (!['accept', 'decline'].includes(decision)) {
+        return res.status(400).json({ success: false, message: 'Invalid decision' });
+      }
+
+      await disputeService.decideNegotiation(disputeId, userId, decision);
+
+      res.json({
+        success: true,
+        message: 'Decision submitted successfully'
+      });
+    } catch (error) {
+      console.error('Decide negotiation error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error submitting decision'
       });
     }
   }
@@ -485,10 +532,10 @@ class DisputeController {
         });
       }
 
-      if (!['accept', 'decline'].includes(decision)) {
+      if (!['accept', 'decline', 'negotiate'].includes(decision)) {
         return res.status(400).json({
           success: false,
-          message: 'Decision must be either "accept" or "decline"'
+          message: 'Decision must be "accept", "decline", or "negotiate"'
         });
       }
 
@@ -504,6 +551,40 @@ class DisputeController {
         success: false,
         message: error.message || 'Error sending seller response',
         error: error.message
+      });
+    }
+  }
+
+  /**
+   * Submit per-user negotiation decision (Accept/Decline on the resolution)
+   * POST /api/mobile-app/disputes/:id/submit-negotiation-decision
+   */
+  async submitNegotiationDecision(req, res) {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return res.status(400).json({ success: false, errors: errors.array() });
+      }
+
+      const userId = req.user.id;
+      const disputeId = req.params.id;
+      const { decision } = req.body;
+
+      if (!['accept', 'decline'].includes(decision)) {
+        return res.status(400).json({ success: false, message: 'Decision must be "accept" or "decline"' });
+      }
+
+      await disputeService.submitNegotiationDecision(disputeId, userId, decision);
+
+      res.json({
+        success: true,
+        message: 'Negotiation decision submitted'
+      });
+    } catch (error) {
+      console.error('Submit negotiation decision error:', error);
+      res.status(500).json({
+        success: false,
+        message: error.message || 'Error submitting negotiation decision'
       });
     }
   }
@@ -528,5 +609,8 @@ module.exports = {
   getDisputeStats: controller.getDisputeStats.bind(controller),
   getDisputeCategories: controller.getDisputeCategories.bind(controller),
   sendSellerResponse: controller.sendSellerResponse.bind(controller),
+  addNegotiationSuggestion: controller.addNegotiationSuggestion.bind(controller),
+  decideNegotiation: controller.decideNegotiation.bind(controller),
+  submitNegotiationDecision: controller.submitNegotiationDecision.bind(controller),
   uploadMiddleware: upload
 };

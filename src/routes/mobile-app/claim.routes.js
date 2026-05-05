@@ -135,4 +135,47 @@ router.put(
     claimController.closeClaim
 );
 
+/**
+ * @route   POST /api/mobile-app/claims/:id/seller-response
+ * @desc    Seller response to claim
+ */
+router.post(
+    '/:id/seller-response',
+    [
+        param('id').isInt().withMessage('Valid claim ID is required'),
+        body('response')
+            .trim()
+            .notEmpty().withMessage('Response description is required')
+            .isLength({ min: 2, max: 2000 }).withMessage('Response must be between 2 and 2000 characters'),
+        body('decision').isIn(['accept', 'decline', 'negotiate']).withMessage('Valid decision is required')
+    ],
+    claimController.sendSellerResponse
+);
+
+/**
+ * @route   POST /api/mobile-app/claims/:id/submit-negotiation-decision
+ * @desc    Submit per-user resolution decision
+ */
+router.post(
+    '/:id/submit-negotiation-decision',
+    [
+        param('id').isInt().withMessage('Valid claim ID is required'),
+        body('decision').isIn(['accept', 'decline']).withMessage('Valid decision is required')
+    ],
+    claimController.submitNegotiationDecision
+);
+
+/**
+ * @route   POST /api/mobile-app/claims/:id/submit-negotiation-suggestion
+ * @desc    Submit negotiation suggestion
+ */
+router.post(
+    '/:id/submit-negotiation-suggestion',
+    [
+        param('id').isInt().withMessage('Valid claim ID is required'),
+        body('suggestion').trim().notEmpty().withMessage('Suggestion is required')
+    ],
+    claimController.submitNegotiationSuggestion
+);
+
 module.exports = router;
