@@ -341,11 +341,15 @@ const sendVerificationCode = async (req, res) => {
         // Store code in database with expiration (10 minutes)
         const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
+        // Generate unique ID
+        const { v4: uuidv4 } = require('uuid');
+        const verificationId = uuidv4();
+
         await promisePool.query(
-            `INSERT INTO verification_codes (email, code, expires_at, created_at)
-             VALUES (?, ?, ?, NOW())
+            `INSERT INTO verification_codes (id, email, code, expires_at, created_at)
+             VALUES (?, ?, ?, ?, NOW())
              ON DUPLICATE KEY UPDATE code = ?, expires_at = ?, created_at = NOW()`,
-            [email, code, expiresAt, code, expiresAt]
+            [verificationId, email, code, expiresAt, code, expiresAt]
         );
 
         // TODO: Send email with verification code
