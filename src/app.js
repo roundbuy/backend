@@ -109,14 +109,23 @@ const mobileColorsRoutes = require('./routes/mobile-app/colors.routes');
 const mobileWalletRoutes = require('./routes/mobile-app/wallet.routes');
 const mobileBuyerSellerRoutes = require('./routes/mobile-app/buyer-seller.routes');
 const mobileCheckoutRoutes = require('./routes/mobile-app/checkout.routes');
+const mobileQuickCheckoutRoutes = require('./routes/mobile-app/quick-checkout.routes');
+const mobileEventsRoutes = require('./routes/mobile-app/events.routes');
+const mobileEventRoomRoutes = require('./routes/mobile-app/event-room.routes');
 const mobileResolutionInboxRoutes = require('./routes/mobile-app/resolution-inbox.routes');
+const mobilePostageRoutes = require('./routes/mobile-app/postage.routes');
+const mobileTrendingRoutes = require('./routes/mobile-app/trending.routes');
 const demoRoutes = require('./routes/demo.routes');
+const kycRoutes = require('./routes/mobile-app/kyc.routes');
 
 
 // Admin routes
 const adminResolutionRoutes = require('./routes/admin/resolution.admin.routes');
 const adminNotificationRoutes = require('./routes/admin/notificationRoutes');
 const adminMessagingRoutes = require('./routes/admin/messaging.admin.routes');
+const trendingAdminRoutes = require('./routes/admin/trending.admin.routes');
+const kycAdminRoutes = require('./routes/admin/kyc.admin.routes');
+const postageAdminRoutes = require('./routes/admin/postage.admin.routes');
 const adminCampaignNotificationRoutes = require('./routes/admin/campaignNotificationRoutes');
 const debugCampaignRoutes = require('./routes/admin/debugCampaignRoutes');
 
@@ -134,6 +143,9 @@ app.use(`/api/${API_VERSION}/banners`, bannerRoutes);
 app.use(`/api/${API_VERSION}/subscriptions`, subscriptionRoutes);
 app.use(`/api/${API_VERSION}/orders`, orderRoutes);
 app.use(`/api/${API_VERSION}/messages`, messageRoutes);
+app.use('/api/v1/admin/postage', postageAdminRoutes);
+app.use('/api/v1/admin/trending', trendingAdminRoutes);
+app.use('/api/v1/admin/kyc', kycAdminRoutes);
 app.use(`/api/${API_VERSION}/languages`, languageRoutes);
 app.use(`/api/${API_VERSION}/faqs`, faqRoutes);
 // Admin routes (Specific)
@@ -160,6 +172,9 @@ app.use(`/api/${API_VERSION}/mobile-app/settings`, mobileSettingsRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/upload`, mobileUploadRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/messaging`, mobileMessagingRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/checkout`, mobileCheckoutRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/quick-checkout`, mobileQuickCheckoutRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/events`, mobileEventsRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/events`, mobileEventRoomRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/favorites`, mobileFavoritesRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/offers`, mobileOffersRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/disputes`, mobileDisputeRoutes);
@@ -177,6 +192,9 @@ app.use(`/api/${API_VERSION}/mobile-app/colors`, mobileColorsRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/wallet`, mobileWalletRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/buyer-seller`, mobileBuyerSellerRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/resolution-inbox`, mobileResolutionInboxRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/postage`, mobilePostageRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/trending`, mobileTrendingRoutes);
+app.use(`/api/${API_VERSION}/mobile-app/kyc`, kycRoutes);
 const platformReviewRoutes = require('./routes/platformReviewRoutes');
 app.use(`/api/${API_VERSION}/mobile-app/reviews`, platformReviewRoutes);
 app.use(`/api/${API_VERSION}/mobile-app/suggestions`, require('./routes/mobile-app/suggestions.routes'));

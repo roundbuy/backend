@@ -22,31 +22,47 @@ const schedulePickup = async (req, res) => {
         }
 
         // Verify the user has an order with pickup option
-        const [orders] = await promisePool.execute(
+        let [orders] = await promisePool.execute(
             `SELECT * FROM orders WHERE buyer_id = ? AND advertisement_id = ? AND status IN ('confirmed', 'completed', 'shipped', 'delivered')`,
             [userId, advertisement_id]
         );
 
-        if (orders.length === 0) {
-            return res.status(404).json({
-                success: false,
-                message: 'No completed pickup order found for this item'
+        let validOrder = null;
+        if (orders.length > 0) {
+            validOrder = orders.find(o => {
+                try {
+                    const notes = JSON.parse(o.notes || '{}');
+                    return notes.deliveryOption === 'pickup';
+                } catch (e) {
+                    return false;
+                }
             });
         }
 
-        const validOrder = orders.find(o => {
-            try {
-                const notes = JSON.parse(o.notes || '{}');
-                return notes.deliveryOption === 'pickup';
-            } catch (e) {
-                return false;
+        // Check quick_orders table if not found in orders
+        if (!validOrder) {
+            const [quickOrders] = await promisePool.execute(
+                `SELECT * FROM quick_orders WHERE buyer_id = ? AND advertisement_id = ? AND order_status IN ('confirmed', 'completed')`,
+                [userId, advertisement_id]
+            );
+            const pickupOrder = quickOrders.find(qo => qo.delivery_option === 'pickup');
+            if (pickupOrder) {
+                validOrder = {
+                    id: pickupOrder.id,
+                    buyer_id: pickupOrder.buyer_id,
+                    seller_id: pickupOrder.seller_id,
+                    advertisement_id: pickupOrder.advertisement_id,
+                    amount: pickupOrder.total_amount,
+                    status: pickupOrder.order_status,
+                    notes: JSON.stringify({ deliveryOption: 'pickup' })
+                };
             }
-        });
+        }
 
         if (!validOrder) {
-            return res.status(403).json({
+            return res.status(404).json({
                 success: false,
-                message: 'This order does not use the local pickup option.'
+                message: 'No completed pickup order found for this item'
             });
         }
 

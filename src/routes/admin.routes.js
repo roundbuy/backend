@@ -142,6 +142,10 @@ router.use('/faqs', faqRoutes);
 const walletRoutes = require('./admin/wallet.admin.routes');
 router.use('/wallets', walletRoutes);
 
+// ==================== TRENDING GALLERIES ====================
+const trendingRoutes = require('./admin/trending.admin.routes');
+router.use('/trending', trendingRoutes);
+
 // ==================== SUGGESTIONS ====================
 const suggestionsController = require('../controllers/mobile-app/suggestions.controller');
 router.get('/suggestions', suggestionsController.getSuggestions);

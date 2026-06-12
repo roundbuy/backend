@@ -27,6 +27,10 @@ const startServer = async () => {
     const { startCampaignScheduler } = require('./src/utils/campaignScheduler');
     startCampaignScheduler();
 
+    // Start event scheduler
+    const { startEventScheduler } = require('./src/jobs/eventJobs');
+    startEventScheduler();
+
     // Start listening
     const server = app.listen(PORT, () => {
       console.log(`\n=================================`);

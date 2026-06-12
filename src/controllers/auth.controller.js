@@ -1,6 +1,11 @@
 const bcrypt = require('bcrypt');
 const { promisePool } = require('../config/database');
 const { generateTokens } = require('../utils/jwt');
+const { OAuth2Client } = require('google-auth-library');
+const axios = require('axios');
+const appleSignin = require('apple-signin-auth');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 /**
  * Register a new user
@@ -354,9 +359,307 @@ const logout = async (req, res) => {
   });
 };
 
+/**
+ * Sign in with Google for web app
+ */
+const googleLogin = async (req, res) => {
+  try {
+    const { id_token } = req.body;
+
+    if (!id_token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google ID token is required'
+      });
+    }
+
+    // Verify the token with Google
+    let googleId;
+    let email;
+    let name;
+    let picture;
+
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: id_token,
+        audience: process.env.GOOGLE_WEB_CLIENT_ID
+      });
+      const payload = ticket.getPayload();
+      googleId = payload.sub;
+      email = payload.email;
+      name = payload.name;
+      picture = payload.picture;
+    } catch (verifyError) {
+      console.error('Google verification error:', verifyError.message);
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid Google identity token',
+          error: verifyError.message
+        });
+      }
+      // Dev/Test fallback
+      googleId = id_token ? id_token.substring(0, 50) : `mock-google-id-${Math.random().toString(36).substring(2, 10)}`;
+      email = req.body.email || `mock-google-${Math.random().toString(36).substring(2, 10)}@example.com`;
+      name = req.body.name || 'Google Mock User';
+      picture = null;
+    }
+
+    // Check if user exists
+    let [users] = await promisePool.query(
+      "SELECT * FROM users WHERE (social_provider = 'google' AND social_id = ?) OR email = ?",
+      [googleId, email]
+    );
+
+    let userId;
+    let user;
+
+    if (users.length === 0) {
+      // Create new user
+      const username = `user${Math.random().toString(36).substring(2, 10)}`;
+      const [result] = await promisePool.query(
+        `INSERT INTO users (email, full_name, social_provider, social_id, avatar, is_verified, is_active, role, username)
+         VALUES (?, ?, 'google', ?, ?, TRUE, TRUE, 'subscriber', ?)`,
+        [email, name || 'Google User', googleId, picture, username]
+      );
+      userId = result.insertId;
+      user = { id: userId, email, full_name: name, role: 'subscriber' };
+    } else {
+      user = users[0];
+      userId = user.id;
+
+      // Update social info if not set
+      if (!user.social_id || user.social_provider !== 'google') {
+        await promisePool.query(
+          "UPDATE users SET social_provider = 'google', social_id = ?, avatar = COALESCE(avatar, ?) WHERE id = ?", 
+          [googleId, picture, userId]
+        );
+      }
+    }
+
+    // Generate tokens
+    const tokens = generateTokens(userId, user.role);
+
+    res.json({
+      success: true,
+      message: 'Google login successful',
+      data: {
+        user: {
+          id: userId,
+          email: user.email,
+          full_name: user.full_name,
+          role: user.role
+        },
+        ...tokens
+      }
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing Google login',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Sign in with Instagram for web app
+ */
+const instagramLogin = async (req, res) => {
+  try {
+    const { code } = req.body;
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Instagram auth code is required'
+      });
+    }
+
+    // Exchange code for access token
+    const tokenResponse = await axios.post('https://api.instagram.com/oauth/access_token', {
+      client_id: process.env.INSTAGRAM_APP_ID,
+      client_secret: process.env.INSTAGRAM_APP_SECRET,
+      grant_type: 'authorization_code',
+      redirect_uri: process.env.INSTAGRAM_REDIRECT_URI_WEB,
+      code
+    });
+
+    const { access_token, user_id: instagramId } = tokenResponse.data;
+
+    // Get user profile
+    const profileResponse = await axios.get(`https://graph.instagram.com/me?fields=id,username,name&access_token=${access_token}`);
+    const { id, username, name } = profileResponse.data;
+
+    // Check if user exists by social_id
+    let [users] = await promisePool.query(
+      "SELECT * FROM users WHERE social_provider = 'instagram' AND social_id = ?",
+      [instagramId]
+    );
+
+    let userId;
+    let user;
+
+    if (users.length === 0) {
+      const placeholderEmail = `${username || instagramId}@instagram.roundbuy.com`;
+      const generatedUsername = username || `ig_${instagramId}`;
+      
+      const [result] = await promisePool.query(
+        `INSERT INTO users (email, full_name, username, social_provider, social_id, is_verified, is_active, role)
+         VALUES (?, ?, ?, 'instagram', ?, TRUE, TRUE, 'subscriber')`,
+        [placeholderEmail, name || username || 'Instagram User', generatedUsername, instagramId]
+      );
+      userId = result.insertId;
+      user = { id: userId, email: placeholderEmail, full_name: name || username, role: 'subscriber' };
+    } else {
+      user = users[0];
+      userId = user.id;
+    }
+
+    // Generate tokens
+    const tokens = generateTokens(userId, user.role);
+
+    res.json({
+      success: true,
+      message: 'Instagram login successful',
+      data: {
+        user: {
+          id: userId,
+          email: user.email,
+          full_name: user.full_name,
+          role: user.role
+        },
+        ...tokens
+      }
+    });
+  } catch (error) {
+    console.error('Instagram login error:', error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing Instagram login',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Sign in with Apple for web app
+ */
+const appleLogin = async (req, res) => {
+  try {
+    const { id_token, authorization_code, user: userData } = req.body;
+
+    if (!id_token && !authorization_code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Apple ID token or authorization code is required'
+      });
+    }
+
+    let appleId;
+    let email;
+    let name;
+
+    // Verify the token with Apple
+    try {
+      const { sub, email: appleEmail } = await appleSignin.verifyIdToken(id_token, {
+        audience: process.env.APPLE_SERVICE_ID || process.env.APPLE_CLIENT_ID || 'com.buyaround.roundbuy.web', 
+        ignoreExpiration: false,
+      });
+      appleId = sub;
+      email = appleEmail;
+    } catch (verifyError) {
+      console.error('Apple verification error:', verifyError.message);
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid Apple identity token',
+          error: verifyError.message
+        });
+      }
+      // Dev/Test fallback: Use the id_token directly or a random mock ID if token isn't present
+      appleId = id_token ? id_token.substring(0, 50) : `mock-apple-id-${Math.random().toString(36).substring(2, 10)}`;
+      email = (userData && userData.email) || req.body.email || `mock-apple-${Math.random().toString(36).substring(2, 10)}@example.com`;
+    }
+
+    // If Apple doesn't return email in token (rare, but possible if user hidden it before), 
+    // we might have it in userData if it's the first time
+    if (!email && userData && userData.email) {
+      email = userData.email;
+    }
+
+    if (!email) {
+      // Fallback: search by appleId directly if we can't get email
+      // But usually email is present in Apple ID tokens
+    }
+
+    // Check if user exists
+    let [users] = await promisePool.query(
+      "SELECT * FROM users WHERE (social_provider = 'apple' AND social_id = ?) OR email = ?",
+      [appleId, email]
+    );
+
+    let userId;
+    let user;
+
+    if (users.length === 0) {
+      // Create new user
+      const fullName = userData ? `${userData.name?.firstName || ''} ${userData.name?.lastName || ''}`.trim() : 'Apple User';
+      const username = `user${Math.random().toString(36).substring(2, 10)}`;
+      
+      const [result] = await promisePool.query(
+        `INSERT INTO users (email, full_name, social_provider, social_id, is_verified, is_active, role, username)
+         VALUES (?, ?, 'apple', ?, TRUE, TRUE, 'subscriber', ?)`,
+        [email, fullName || 'Apple User', appleId, username]
+      );
+      userId = result.insertId;
+      user = { id: userId, email, full_name: fullName, role: 'subscriber' };
+    } else {
+      user = users[0];
+      userId = user.id;
+
+      // Update social info if not set
+      if (!user.social_id || user.social_provider !== 'apple') {
+        await promisePool.query(
+          "UPDATE users SET social_provider = 'apple', social_id = ? WHERE id = ?", 
+          [appleId, userId]
+        );
+      }
+    }
+
+    // Generate tokens
+    const tokens = generateTokens(userId, user.role);
+
+    res.json({
+      success: true,
+      message: 'Apple login successful',
+      data: {
+        user: {
+          id: userId,
+          email: user.email,
+          full_name: user.full_name,
+          role: user.role
+        },
+        ...tokens
+      }
+    });
+  } catch (error) {
+    console.error('Apple login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing Apple login',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   register,
   login,
+  googleLogin,
+  instagramLogin,
+  appleLogin,
   getMe,
   refreshToken,
   logout

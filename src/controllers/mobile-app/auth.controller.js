@@ -3,6 +3,11 @@ const crypto = require('crypto');
 const { promisePool } = require('../../config/database');
 const { generateTokens } = require('../../utils/jwt');
 const { sendVerificationEmail, sendPasswordResetEmail } = require('../../services/email.service');
+const appleSignin = require('apple-signin-auth');
+const { OAuth2Client } = require('google-auth-library');
+const axios = require('axios');
+
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 /**
  * Register a new user for mobile app
@@ -690,6 +695,401 @@ const changePassword = async (req, res) => {
   }
 };
 
+/**
+ * Sign in with Apple for mobile app
+ * POST /api/v1/mobile-app/auth/apple-login
+ */
+const appleLogin = async (req, res) => {
+  try {
+    const { identity_token, id_token, full_name, email: providedEmail, user: userData } = req.body;
+    const token = identity_token || id_token;
+
+    if (!token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Identity token is required'
+      });
+    }
+
+    // Verify the token with Apple
+    // Note: In development/testing, we might skip full verification if Apple setup is incomplete
+    let appleId, email;
+    try {
+      const verification = await appleSignin.verifyIdToken(token, {
+        audience: process.env.APPLE_CLIENT_ID || 'com.buyaround.roundbuy',
+        ignoreExpiration: process.env.NODE_ENV === 'development',
+      });
+      appleId = verification.sub;
+      email = verification.email || providedEmail || (userData && userData.email);
+    } catch (verifyError) {
+      console.error('Apple verification error:', verifyError.message);
+      // Fallback for development if needed, but strictly enforce for production
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid Apple identity token',
+          error: verifyError.message
+        });
+      }
+      // Dev fallback (use token as appleId if it's not a real token)
+      appleId = token.substring(0, 50); 
+      email = providedEmail || (userData && userData.email);
+    }
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required for Apple Sign In. Please ensure you share your email with the app.'
+      });
+    }
+
+    const resolvedFullName = full_name || (userData && userData.name ? `${userData.name.firstName || ''} ${userData.name.lastName || ''}`.trim() : null) || 'Apple User';
+
+    // Check if user exists
+    let [users] = await promisePool.query(
+      "SELECT * FROM users WHERE (social_provider = 'apple' AND social_id = ?) OR email = ?",
+      [appleId, email]
+    );
+
+    let userId;
+    let user;
+
+    if (users.length === 0) {
+      // Create new user (verified by default since Apple verified it)
+      const [result] = await promisePool.query(
+        `INSERT INTO users (email, full_name, social_provider, social_id, is_verified, is_active, role)
+         VALUES (?, ?, 'apple', ?, TRUE, TRUE, 'subscriber')`,
+        [email, resolvedFullName, appleId]
+      );
+      userId = result.insertId;
+      
+      const [newUsers] = await promisePool.query(
+        `SELECT u.*, sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
+         FROM users u
+         LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+         WHERE u.id = ?`, 
+        [userId]
+      );
+      user = newUsers[0];
+    } else {
+      user = users[0];
+      userId = user.id;
+
+      // Update social info if not set
+      if (!user.social_id || user.social_provider !== 'apple') {
+        await promisePool.query(
+          "UPDATE users SET social_provider = 'apple', social_id = ? WHERE id = ?", 
+          [appleId, userId]
+        );
+      }
+      
+      // Ensure user is verified if they login via Apple
+      if (!user.is_verified) {
+        await promisePool.query('UPDATE users SET is_verified = TRUE WHERE id = ?', [userId]);
+        user.is_verified = true;
+      }
+    }
+
+    // Generate tokens
+    const tokens = generateTokens(userId, user.role);
+
+    // Check subscription
+    const [subscriptions] = await promisePool.query(
+      `SELECT id FROM user_subscriptions
+       WHERE user_id = ? AND status = 'active' AND end_date > NOW()
+       LIMIT 1`,
+      [userId]
+    );
+    const hasSubscription = subscriptions.length > 0;
+
+    res.json({
+      success: true,
+      message: 'Apple login successful',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          avatar: user.avatar,
+          full_name: user.full_name,
+          role: user.role,
+          is_verified: true,
+          has_active_subscription: hasSubscription,
+          requires_subscription: !hasSubscription,
+          subscription_plan_id: user.subscription_plan_id,
+          subscription_plan_slug: user.subscription_plan_slug,
+          subscription_plan_name: user.subscription_plan_name,
+          subscription_start_date: user.subscription_start_date,
+          subscription_end_date: user.subscription_end_date
+        },
+        ...tokens,
+        requires_subscription: !hasSubscription
+      }
+    });
+  } catch (error) {
+    console.error('Apple login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing Apple login',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Sign in with Google for mobile app
+ * POST /api/v1/mobile-app/auth/google-login
+ */
+const googleLogin = async (req, res) => {
+  try {
+    const { id_token, full_name: providedName } = req.body;
+
+    if (!id_token) {
+      return res.status(400).json({
+        success: false,
+        message: 'Google ID token is required'
+      });
+    }
+
+    // Verify the token with Google
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: id_token,
+        audience: [
+          process.env.GOOGLE_IOS_CLIENT_ID,
+          process.env.GOOGLE_ANDROID_CLIENT_ID,
+          process.env.GOOGLE_WEB_CLIENT_ID
+        ].filter(Boolean)
+      });
+      payload = ticket.getPayload();
+    } catch (verifyError) {
+      console.error('Google verification error:', verifyError.message);
+      if (process.env.NODE_ENV === 'production') {
+        return res.status(401).json({
+          success: false,
+          message: 'Invalid Google identity token',
+          error: verifyError.message
+        });
+      }
+      // Dev fallback if configured
+      payload = {
+        sub: id_token.substring(0, 50),
+        email: 'test@example.com',
+        name: providedName || 'Google User'
+      };
+    }
+
+    const { sub: googleId, email, name, picture } = payload;
+
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email is required from Google. Please ensure you share your email.'
+      });
+    }
+
+    // Check if user exists
+    let [users] = await promisePool.query(
+      "SELECT * FROM users WHERE (social_provider = 'google' AND social_id = ?) OR email = ?",
+      [googleId, email]
+    );
+
+    let userId;
+    let user;
+
+    if (users.length === 0) {
+      // Create new user
+      const [result] = await promisePool.query(
+        `INSERT INTO users (email, full_name, social_provider, social_id, avatar, is_verified, is_active, role)
+         VALUES (?, ?, 'google', ?, ?, TRUE, TRUE, 'subscriber')`,
+        [email, name || providedName || 'Google User', googleId, picture]
+      );
+      userId = result.insertId;
+      
+      const [newUsers] = await promisePool.query(
+        `SELECT u.*, sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
+         FROM users u
+         LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+         WHERE u.id = ?`, 
+        [userId]
+      );
+      user = newUsers[0];
+    } else {
+      user = users[0];
+      userId = user.id;
+
+      // Update social info if not set
+      if (!user.social_id || user.social_provider !== 'google') {
+        await promisePool.query(
+          "UPDATE users SET social_provider = 'google', social_id = ?, avatar = COALESCE(avatar, ?) WHERE id = ?", 
+          [googleId, picture, userId]
+        );
+      }
+      
+      if (!user.is_verified) {
+        await promisePool.query('UPDATE users SET is_verified = TRUE WHERE id = ?', [userId]);
+        user.is_verified = true;
+      }
+    }
+
+    // Generate tokens
+    const tokens = generateTokens(userId, user.role);
+
+    // Check subscription
+    const [subscriptions] = await promisePool.query(
+      "SELECT id FROM user_subscriptions WHERE user_id = ? AND status = 'active' AND end_date > NOW() LIMIT 1",
+      [userId]
+    );
+    const hasSubscription = subscriptions.length > 0;
+
+    res.json({
+      success: true,
+      message: 'Google login successful',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          avatar: user.avatar,
+          full_name: user.full_name,
+          role: user.role,
+          is_verified: true,
+          has_active_subscription: hasSubscription,
+          requires_subscription: !hasSubscription,
+          subscription_plan_id: user.subscription_plan_id,
+          subscription_plan_slug: user.subscription_plan_slug,
+          subscription_plan_name: user.subscription_plan_name,
+          subscription_start_date: user.subscription_start_date,
+          subscription_end_date: user.subscription_end_date
+        },
+        ...tokens,
+        requires_subscription: !hasSubscription
+      }
+    });
+  } catch (error) {
+    console.error('Google login error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing Google login',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Sign in with Instagram for mobile app
+ * POST /api/v1/mobile-app/auth/instagram-login
+ */
+const instagramLogin = async (req, res) => {
+  try {
+    const { code } = req.body;
+
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Instagram auth code is required'
+      });
+    }
+
+    // 1. Exchange code for access token
+    const tokenResponse = await axios.post('https://api.instagram.com/oauth/access_token', {
+      client_id: process.env.INSTAGRAM_APP_ID,
+      client_secret: process.env.INSTAGRAM_APP_SECRET,
+      grant_type: 'authorization_code',
+      redirect_uri: process.env.INSTAGRAM_REDIRECT_URI,
+      code
+    });
+
+    const { access_token, user_id: instagramId } = tokenResponse.data;
+
+    // 2. Get user profile
+    const profileResponse = await axios.get(`https://graph.instagram.com/me?fields=id,username,name&access_token=${access_token}`);
+    const { id, username, name } = profileResponse.data;
+
+    // Note: Instagram API doesn't always return email. 
+    // If email is missing, we might need a fallback or ask user to provide it.
+    // For now, let's use instagramId + @instagram.com as a placeholder if email is missing,
+    // OR return a special status that email is required.
+    
+    // Check if user exists by social_id
+    let [users] = await promisePool.query(
+      "SELECT * FROM users WHERE social_provider = 'instagram' AND social_id = ?",
+      [instagramId]
+    );
+
+    let userId;
+    let user;
+
+    if (users.length === 0) {
+      // Since email is often missing from Instagram, we'll use a placeholder
+      // and potentially ask the user to update it later.
+      const placeholderEmail = `${username || instagramId}@instagram.roundbuy.com`;
+      
+      const [result] = await promisePool.query(
+        `INSERT INTO users (email, full_name, username, social_provider, social_id, is_verified, is_active, role)
+         VALUES (?, ?, ?, 'instagram', ?, TRUE, TRUE, 'subscriber')`,
+        [placeholderEmail, name || username || 'Instagram User', username, instagramId]
+      );
+      userId = result.insertId;
+      
+      const [newUsers] = await promisePool.query(
+        `SELECT u.*, sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
+         FROM users u
+         LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+         WHERE u.id = ?`, 
+        [userId]
+      );
+      user = newUsers[0];
+    } else {
+      user = users[0];
+      userId = user.id;
+    }
+
+    // Generate tokens
+    const tokens = generateTokens(userId, user.role);
+
+    // Check subscription
+    const [subscriptions] = await promisePool.query(
+      "SELECT id FROM user_subscriptions WHERE user_id = ? AND status = 'active' AND end_date > NOW() LIMIT 1",
+      [userId]
+    );
+    const hasSubscription = subscriptions.length > 0;
+
+    res.json({
+      success: true,
+      message: 'Instagram login successful',
+      data: {
+        user: {
+          id: user.id,
+          email: user.email,
+          username: user.username,
+          avatar: user.avatar,
+          full_name: user.full_name,
+          role: user.role,
+          is_verified: true,
+          has_active_subscription: hasSubscription,
+          requires_subscription: !hasSubscription,
+          subscription_plan_id: user.subscription_plan_id,
+          subscription_plan_slug: user.subscription_plan_slug,
+          subscription_plan_name: user.subscription_plan_name,
+          subscription_start_date: user.subscription_start_date,
+          subscription_end_date: user.subscription_end_date
+        },
+        ...tokens,
+        requires_subscription: !hasSubscription
+      }
+    });
+  } catch (error) {
+    console.error('Instagram login error:', error.response?.data || error.message);
+    res.status(500).json({
+      success: false,
+      message: 'Error processing Instagram login',
+      error: error.message
+    });
+  }
+};
+
 module.exports = {
   register,
   verifyEmail,
@@ -697,5 +1097,8 @@ module.exports = {
   login,
   forgotPassword,
   resetPassword,
-  changePassword
+  changePassword,
+  appleLogin,
+  googleLogin,
+  instagramLogin
 };

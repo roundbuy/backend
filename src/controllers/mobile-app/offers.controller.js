@@ -1,4 +1,5 @@
 const { promisePool } = require('../../config/database');
+const { createNotificationForUser } = require('../../utils/notificationHelper');
 
 // Create a new offer
 const createOffer = async (req, res) => {
@@ -16,6 +17,29 @@ const createOffer = async (req, res) => {
 
     await connection.beginTransaction();
 
+    // Fetch min offer % from settings table (DB-driven, falls back to 60)
+    let minOfferPct = 60;
+    let tooltipText = 'Offers lower than 60% of the asking price are not possible, to reflect items true value.';
+    try {
+      const [settingRows] = await connection.execute(
+        `SELECT setting_key, setting_value FROM settings
+         WHERE category = 'offers'
+           AND setting_key IN ('min_offer_percentage', 'min_offer_tooltip_text')`
+      );
+      settingRows.forEach((row) => {
+        if (row.setting_key === 'min_offer_percentage') {
+          minOfferPct = parseFloat(row.setting_value) || 60;
+        }
+        if (row.setting_key === 'min_offer_tooltip_text') {
+          let txt = row.setting_value || '';
+          if (txt.startsWith('"') && txt.endsWith('"')) {
+            try { txt = JSON.parse(txt); } catch (_) { /* keep as-is */ }
+          }
+          tooltipText = txt || tooltipText;
+        }
+      });
+    } catch (_) { /* use defaults on DB error */ }
+
     // Check if advertisement exists
     const [ads] = await connection.execute(
       'SELECT *, user_id as seller_id FROM advertisements WHERE id = ? FOR UPDATE',
@@ -32,13 +56,16 @@ const createOffer = async (req, res) => {
 
     const ad = ads[0];
     const itemPrice = parseFloat(ad.price);
-    const minOffer = itemPrice * 0.6;
+    const minOffer = itemPrice * (minOfferPct / 100);
 
     if (parseFloat(price) < minOffer) {
       await connection.rollback();
       return res.status(400).json({
         success: false,
-        message: 'Offers lower than 60% of the asking price are not possible, to reflect items true value.'
+        message: tooltipText,
+        error_code: 'OFFER_BELOW_MINIMUM',
+        min_offer_percentage: minOfferPct,
+        min_offer_amount: minOffer.toFixed(2)
       });
     }
 
@@ -64,35 +91,46 @@ const createOffer = async (req, res) => {
       });
     }
 
-    // Create offer
-    // sender_id is the creator of the offer (buyer)
+    // Find or create conversation
+    let conversationId = null;
+    const [convRows] = await connection.execute(
+      'SELECT id FROM conversations WHERE advertisement_id = ? AND buyer_id = ? AND seller_id = ?',
+      [advertisementId, userId, ad.seller_id]
+    );
+
+    if (convRows.length > 0) {
+      conversationId = convRows[0].id;
+    } else {
+      const [convResult] = await connection.execute(
+        'INSERT INTO conversations (advertisement_id, buyer_id, seller_id) VALUES (?, ?, ?)',
+        [advertisementId, userId, ad.seller_id]
+      );
+      conversationId = convResult.insertId;
+    }
+
+    // Create offer — snapshot min_offer_pct + original_price for audit trail
     const [result] = await connection.execute(
-      `INSERT INTO offers 
-       (advertisement_id, buyer_id, seller_id, sender_id, offered_price, message, status, currency_code)
-       VALUES (?, ?, ?, ?, ?, ?, 'pending', 'GBP')`,
-      [advertisementId, userId, ad.seller_id, userId, price, message]
+      `INSERT INTO offers
+       (conversation_id, advertisement_id, buyer_id, seller_id, sender_id, offered_price, message, status, currency_code, min_offer_pct, original_price)
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', 'GBP', ?, ?)`,
+      [conversationId, advertisementId, userId, ad.seller_id, userId, price, message, minOfferPct, itemPrice]
     );
 
     await connection.commit();
 
     // Notify Seller
     try {
-      await promisePool.execute(
-        `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          ad.seller_id,
-          'popup', // 'offer' type? Using popup generic
-          'New Offer',
-          `You received a new offer of £${price} for "${ad.title}"`,
-          JSON.stringify({
-            offer_id: result.insertId,
-            advertisement_id: advertisementId,
-            action: 'new_offer'
-          }),
-          false
-        ]
-      );
+      await createNotificationForUser({
+        user_id: ad.seller_id,
+        type: 'popup',
+        title: 'New Offer',
+        message: `You received a new offer of £${price} for "${ad.title}"`,
+        action_data: {
+          offer_id: result.insertId,
+          advertisement_id: advertisementId,
+          action: 'new_offer'
+        }
+      });
     } catch (e) {
       console.error('Notification error', e);
     }
@@ -569,23 +607,18 @@ const acceptOffer = async (req, res) => {
         ? `Your offer of ${offer.currency_code || '£'}${offer.offered_price} for "${offer.advertisement_title}" has been accepted and fees paid!`
         : `Your offer of ${offer.currency_code || '£'}${offer.offered_price} for "${offer.advertisement_title}" has been accepted! Please pay the pickup fees.`;
 
-      await promisePool.execute(
-        `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          offer.buyer_id,
-          'popup',
-          'Offer Accepted',
-          notifMessage,
-          JSON.stringify({
-            offer_id: offerId,
-            advertisement_id: offer.advertisement_id,
-            action: 'offer_accepted',
-            fee_paid: paymentSuccess
-          }),
-          false
-        ]
-      );
+      await createNotificationForUser({
+        user_id: offer.buyer_id,
+        type: 'popup',
+        title: 'Offer Accepted',
+        message: notifMessage,
+        action_data: {
+          offer_id: offerId,
+          advertisement_id: offer.advertisement_id,
+          action: 'offer_accepted',
+          fee_paid: paymentSuccess
+        }
+      });
     } catch (notifError) {
       console.error('Error creating notification:', notifError);
     }
@@ -646,24 +679,18 @@ const rejectOffer = async (req, res) => {
       ['rejected', offerId]
     );
 
-    // Create notification for buyer
     try {
-      await promisePool.execute(
-        `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          offer.buyer_id,
-          'popup',
-          'Offer Declined',
-          `Your offer of ${offer.currency_code || '£'}${offer.offered_price} for "${offer.advertisement_title}" has been declined.`,
-          JSON.stringify({
-            offer_id: offerId,
-            advertisement_id: offer.advertisement_id,
-            action: 'offer_declined'
-          }),
-          false
-        ]
-      );
+      await createNotificationForUser({
+        user_id: offer.buyer_id,
+        type: 'popup',
+        title: 'Offer Declined',
+        message: `Your offer of ${offer.currency_code || '£'}${offer.offered_price} for "${offer.advertisement_title}" has been declined.`,
+        action_data: {
+          offer_id: offerId,
+          advertisement_id: offer.advertisement_id,
+          action: 'offer_declined'
+        }
+      });
     } catch (notifError) {
       console.error('Error creating notification:', notifError);
       // Don't fail the request if notification fails
@@ -780,22 +807,17 @@ const buyItem = async (req, res) => {
 
     // 4. Notify Seller
     try {
-      await promisePool.execute(
-        `INSERT INTO notifications (user_id, type, title, message, data, is_read) 
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [
-          ad.seller_id,
-          'popup',
-          'Item Sold!',
-          `Your item "${ad.title}" has been purchased for £${itemPrice}!`,
-          JSON.stringify({
-            offer_id: newOfferId,
-            advertisement_id: advertisementId,
-            action: 'item_sold'
-          }),
-          false
-        ]
-      );
+      await createNotificationForUser({
+        user_id: ad.seller_id,
+        type: 'popup',
+        title: 'Item Sold!',
+        message: `Your item "${ad.title}" has been purchased for £${itemPrice}!`,
+        action_data: {
+          offer_id: newOfferId,
+          advertisement_id: advertisementId,
+          action: 'item_sold'
+        }
+      });
     } catch (e) { console.error('Notification error', e); }
 
     res.status(200).json({

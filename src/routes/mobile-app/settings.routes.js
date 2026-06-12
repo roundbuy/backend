@@ -25,6 +25,22 @@ router.get('/currencies', settingsController.getCurrencies);
 router.get('/countries', settingsController.getCountries);
 
 /**
+ * @route GET /api/v1/mobile-app/settings/offer-rules
+ * @desc Get offer floor rules (min % and tooltip text)
+ * @access Public — used before offer submission
+ */
+router.get('/offer-rules', settingsController.getOfferRules);
+
+/**
+ * @route PUT /api/v1/mobile-app/settings/offer-rules
+ * @desc Update offer floor rules (admin only)
+ * @access Private (admin)
+ * @body {number} min_offer_percentage
+ * @body {string} min_offer_tooltip_text
+ */
+router.put('/offer-rules', authenticate, settingsController.updateOfferRules);
+
+/**
  * @route GET /api/v1/mobile-app/settings/preferences
  * @desc Get user's language, country, and currency preferences
  * @access Private (requires authentication)
@@ -35,9 +51,6 @@ router.get('/preferences', authenticate, settingsController.getUserPreferences);
  * @route PUT /api/v1/mobile-app/settings/preferences
  * @desc Update user's language, country, and currency preferences
  * @access Private (requires authentication)
- * @body {string} language_preference - Language code (e.g., 'en', 'hi')
- * @body {string} country_code - Country code (e.g., 'IND', 'USA')
- * @body {string} currency_code - Currency code (e.g., 'INR', 'USD')
  */
 router.put('/preferences', authenticate, settingsController.updateUserPreferences);
 

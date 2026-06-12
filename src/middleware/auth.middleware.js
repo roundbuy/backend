@@ -7,25 +7,34 @@ const { promisePool } = require('../config/database');
 const authenticate = async (req, res, next) => {
   try {
     console.log('=== AUTH MIDDLEWARE ===');
-    // Get token from header
-    const authHeader = req.headers.authorization;
-    console.log('Auth header present:', !!authHeader);
 
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      console.log('❌ No Bearer token in header');
+    // 1. Try Authorization header (standard API calls)
+    const authHeader = req.headers.authorization;
+    // 2. Fallback: ?token= query param (needed for SSE / EventSource which can't set headers)
+    const queryToken = req.query.token;
+
+    let rawToken = null;
+
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      rawToken = authHeader.substring(7);
+    } else if (queryToken) {
+      rawToken = queryToken;
+    }
+
+    if (!rawToken) {
+      console.log('❌ No token in header or query param');
       return res.status(401).json({
         success: false,
         message: 'No token provided'
       });
     }
 
-    const token = authHeader.substring(7); // Remove 'Bearer ' prefix
-    console.log('Token extracted, length:', token.length);
+    console.log('Token extracted, length:', rawToken.length);
 
     // Verify token
     let decoded;
     try {
-      decoded = verifyAccessToken(token);
+      decoded = verifyAccessToken(rawToken);
       console.log('✅ Token verified, userId:', decoded.userId);
     } catch (tokenError) {
       console.log('❌ Token verification failed:', tokenError.message);

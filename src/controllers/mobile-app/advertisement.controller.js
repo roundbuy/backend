@@ -1247,7 +1247,8 @@ const browseAdvertisements = async (req, res) => {
       const showcases = await fetchActiveShowcases({ latitude, longitude, radius });
       const homemarkets = await fetchActiveHomeMarkets({ latitude, longitude, radius });
       const banners = await fetchActiveBannerAds();
-      assembledAds = await assembleProductListing(processedAds, showcases, homemarkets, banners);
+      const trendingGalleries = await fetchTrendingGalleries({ latitude, longitude, radius });
+      assembledAds = await assembleProductListing(processedAds, showcases, homemarkets, banners, trendingGalleries);
     }
 
     res.json({
@@ -1517,6 +1518,69 @@ async function fetchActiveHomeMarkets(filters = {}) {
     return [];
   }
 }
+
+/**
+ * Helper function to fetch trending galleries (Gender specific)
+ */
+async function fetchTrendingGalleries(filters = {}) {
+  try {
+    const { latitude, longitude, radius } = filters;
+
+    // Build location filter
+    let locationWhere = '';
+    const locationParams = [];
+    if (latitude && longitude && radius) {
+      locationWhere = `
+        AND (
+          SELECT MIN(6371 * acos(cos(radians(?)) * cos(radians(ul_sub.latitude)) *
+          cos(radians(ul_sub.longitude) - radians(?)) + sin(radians(?)) *
+          sin(radians(ul_sub.latitude))))
+          FROM advertisement_locations al_sub
+          JOIN user_locations ul_sub ON al_sub.location_id = ul_sub.id
+          WHERE al_sub.advertisement_id = a.id
+        ) <= ?
+      `;
+      locationParams.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude), parseFloat(radius));
+    }
+
+    const galleries = [];
+
+    // Fetch Gender IDs
+    const [genders] = await promisePool.query('SELECT id, name, slug FROM ad_genders WHERE slug IN ("male", "female")');
+    
+    for (const gender of genders) {
+      const query = `
+        SELECT a.id, a.title, a.price, a.images, u.full_name as seller_name, a.views_count
+        FROM advertisements a
+        JOIN users u ON a.user_id = u.id
+        WHERE a.status = 'published'
+          AND a.gender_id = ?
+          ${locationWhere}
+        ORDER BY a.views_count DESC, a.created_at DESC
+        LIMIT 10
+      `;
+
+      const [products] = await promisePool.query(query, [gender.id, ...locationParams]);
+
+      if (products.length >= 4) {
+        galleries.push({
+          type: 'trending',
+          title: `Trending ${gender.name === 'male' ? 'Men' : gender.name === 'female' ? 'Women' : gender.name}`,
+          gender_id: gender.id,
+          products: products.map(p => ({
+            ...p,
+            images: p.images ? JSON.parse(p.images) : []
+          }))
+        });
+      }
+    }
+
+    return galleries;
+  } catch (error) {
+    console.error('Error fetching Trending Galleries:', error);
+    return [];
+  }
+}
 /**
  * Helper function to fetch active banner ads
  */
@@ -1549,7 +1613,6 @@ async function fetchActiveBannerAds() {
       link_url: banner.link_url,
       size: banner.size
     }));
-
     console.log(`📢 Found ${result.length} active banner ad(s)`);
     return result;
 
@@ -1563,60 +1626,62 @@ async function fetchActiveBannerAds() {
  * Helper function to assemble product listing with correct order
  * Order: Promotions -> Standard Listings with injections (ShowCasing, HomeMarket, Banners)
  */
-async function assembleProductListing(ads, showcases, homemarkets, banners) {
+async function assembleProductListing(ads, showcases, homemarkets, banners, trendingGalleries = []) {
   try {
     console.log('\n🔍 DEBUG: Starting assembleProductListing');
-    console.log(`📊 Input: ${ads.length} ads, ${showcases.length} showcases, ${homemarkets.length} homemarkets, ${banners.length} banners`);
+    console.log(`📊 Input: ${ads.length} ads, ${showcases.length} showcases, ${homemarkets.length} homemarkets, ${banners.length} banners, ${trendingGalleries.length} trending`);
 
-    // Log first few ads with their badges
-    console.log('\n🏷️  Sample ads with badges:');
-    ads.slice(0, 5).forEach((ad, idx) => {
-      console.log(`  Ad ${idx + 1} (ID: ${ad.id}): ${ad.title}`);
-      if (ad.badges && ad.badges.length > 0) {
-        ad.badges.forEach(badge => {
-          console.log(`    - Badge: type="${badge.type}", level="${badge.level}"`);
-        });
-      } else {
-        console.log(`    - No badges`);
-      }
-    });
+    const seenAdIds = new Set();
 
     // 1. Separate promotions from standard listings
-    // Promotions: ads with visibility badges (rise_to_top, top_spot, fast, targeted)
-    // Standard: ads WITHOUT promotion visibility badges (can have show_casing or homemarket badges)
     const promotionBadgeLevels = ['rise_to_top', 'top_spot', 'fast', 'targeted'];
 
-    const promotions = ads.filter(ad =>
+    let promotions = ads.filter(ad =>
       ad.badges && ad.badges.some(b =>
         b.type === 'visibility' &&
         promotionBadgeLevels.includes(b.level)
       )
     );
 
-    const standard = ads.filter(ad =>
-      !ad.badges || !ad.badges.some(b =>
-        b.type === 'visibility' && promotionBadgeLevels.includes(b.level)
-      )
-    );
+    // Filter out duplicates from promotions (unlikely but safe)
+    promotions = promotions.filter(ad => {
+      if (seenAdIds.has(ad.id)) return false;
+      seenAdIds.add(ad.id);
+      return true;
+    });
 
-    console.log(`\n📊 Separated: ${promotions.length} promotions, ${standard.length} standard`);
+    // 2. Filter Trending Galleries
+    const processedTrending = trendingGalleries.map(gallery => {
+      const uniqueProducts = gallery.products.filter(p => !seenAdIds.has(p.id));
+      uniqueProducts.forEach(p => seenAdIds.add(p.id));
+      return { ...gallery, products: uniqueProducts };
+    }).filter(g => g.products.length >= 4);
 
-    if (promotions.length > 0) {
-      console.log('🎯 Promotion ads:');
-      promotions.forEach((ad, idx) => {
-        const visibilityBadge = ad.badges.find(b => b.type === 'visibility');
-        console.log(`  ${idx + 1}. ${ad.title} (badge: ${visibilityBadge?.level})`);
-      });
-    } else {
-      console.log('⚠️  No promotions found!');
-    }
+    // 3. Filter Showcases
+    const processedShowcases = showcases.map(sc => {
+      const uniqueProducts = sc.products.filter(p => !seenAdIds.has(p.id));
+      uniqueProducts.forEach(p => seenAdIds.add(p.id));
+      return { ...sc, products: uniqueProducts };
+    }).filter(sc => sc.products.length >= 4);
 
-    // 2. Build result array
+    // 4. Filter HomeMarkets
+    const processedHomeMarkets = homemarkets.map(hm => {
+      const uniqueProducts = hm.products.filter(p => !seenAdIds.has(p.id));
+      uniqueProducts.forEach(p => seenAdIds.add(p.id));
+      return { ...hm, products: uniqueProducts };
+    }).filter(hm => hm.products.length >= 2);
+
+    // 5. Standard Listings (Remaining ads not in promotions/showcases/etc)
+    const standard = ads.filter(ad => !seenAdIds.has(ad.id));
+    standard.forEach(ad => seenAdIds.add(ad.id));
+
+    console.log(`\n📊 De-duplicated: ${promotions.length} promotions, ${processedTrending.length} trending, ${processedShowcases.length} showcases, ${processedHomeMarkets.length} homemarkets, ${standard.length} standard`);
+
+    // 6. Build result array
     const result = [];
 
     // Step 1: Add promotions section at the very top
     if (promotions.length > 0) {
-      console.log(`\n✅ Adding PROMOTIONS section with ${promotions.length} ads`);
       result.push({ type: 'section_header', title: 'PROMOTIONS' });
       result.push({ type: 'horizontal_line' });
       result.push({
@@ -1626,34 +1691,27 @@ async function assembleProductListing(ads, showcases, homemarkets, banners) {
       result.push({ type: 'horizontal_line' });
     }
 
-    // Step 2: Add first showcase immediately after promotions
     let showcaseIndex = 0;
     let homemarketsInjected = false;
     let bannerIndex = 0;
 
-    if (showcases.length > 0) {
-      console.log(`\n✅ Adding first SHOWCASING ROOM (${showcases[0].products?.length || 0} products)`);
+    // Step 2: Add first showcase immediately after promotions
+    if (processedShowcases.length > 0) {
       result.push({ type: 'section_header', title: 'SHOWCASING' });
       result.push({ type: 'horizontal_line' });
-      result.push(showcases[showcaseIndex++]);
+      result.push(processedShowcases[showcaseIndex++]);
       result.push({ type: 'horizontal_line' });
 
       // Inject banner after first showcase if available
       if (bannerIndex < banners.length) {
-        console.log(`  📌 Injecting BANNER after Showcase (size: ${banners[bannerIndex].size})`);
         result.push(banners[bannerIndex++]);
       }
     }
 
-    console.log(`\n📋 Starting standard listings injection (${standard.length} standard ads)...`);
-
-    // Step 3: Inject standard listings with pattern:
-    // Batch standard products into groups of 6 (3 rows × 2 columns)
-    // Pattern: Standard batch → ShowCasing (+Banner) → Standard batch → HomeMarket (+Banner) → Repeat
+    // Step 3: Inject standard listings with pattern
     let standardIndex = 0;
     let batchCount = 0;
-    let patternStep = 0; // 0: wait for showcase, 1: wait for homemarket
-    const PRODUCTS_PER_BATCH = 6; // 3 rows × 2 columns
+    const PRODUCTS_PER_BATCH = 6;
 
     while (standardIndex < standard.length) {
       // Create a batch of standard products
@@ -1661,7 +1719,6 @@ async function assembleProductListing(ads, showcases, homemarkets, banners) {
       const batch = standard.slice(standardIndex, standardIndex + batchSize);
       standardIndex += batchSize;
 
-      console.log(`  ✅ Adding STANDARD batch ${batchCount + 1} with ${batchSize} products`);
       result.push({
         type: 'standard',
         products: batch
@@ -1669,59 +1726,34 @@ async function assembleProductListing(ads, showcases, homemarkets, banners) {
       batchCount++;
 
       // Check if we should inject content
+      let injectedContent = false;
       if (batchCount >= 1) {
-        let injectedContent = false;
-
-        // Determine what to inject (Showcase vs HomeMarket vs Banner)
-        const canInjectShowcase = showcaseIndex < showcases.length;
-        const canInjectHomeMarket = homemarkets.length > 0 && !homemarketsInjected;
-
-        // Strategy: Alternate between Showcase and HomeMarket if available
-        let injectType = null;
-
-        if (patternStep === 0) {
-          // Prefer Showcase
-          if (canInjectShowcase) injectType = 'showcase';
-          else if (canInjectHomeMarket) injectType = 'homemarket_group';
-        } else {
-          // Prefer HomeMarket
-          if (canInjectHomeMarket) injectType = 'homemarket_group';
-          else if (canInjectShowcase) injectType = 'showcase';
+        // Inject Trending sections after the first batch
+        if (batchCount === 1 && processedTrending.length > 0) {
+          injectedContent = true;
+          processedTrending.forEach(gallery => {
+            result.push({ type: 'section_header', title: gallery.title });
+            result.push({ type: 'horizontal_line' });
+            result.push(gallery);
+            result.push({ type: 'horizontal_line' });
+          });
         }
 
-        // If neither found, checking for pure banner injection will happen in the 'else' block below
-
-        if (injectType === 'showcase') {
-          console.log(`  📌 Injecting SHOWCASING after batch ${batchCount} (${showcases[showcaseIndex].products?.length || 0} products)`);
+        // Inject Showcases or HomeMarkets or Banners
+        if (showcaseIndex < processedShowcases.length && batchCount % 2 === 0) {
+          injectedContent = true;
           result.push({ type: 'section_header', title: 'SHOWCASING' });
           result.push({ type: 'horizontal_line' });
-          result.push(showcases[showcaseIndex++]);
+          result.push(processedShowcases[showcaseIndex++]);
           result.push({ type: 'horizontal_line' });
-
-          // Try to inject banner along with showcase
-          if (bannerIndex < banners.length) {
-            console.log(`  📌 Injecting BANNER after Showcase`);
-            result.push(banners[bannerIndex++]);
-            result.push({ type: 'horizontal_line' });
-          }
-
+        } else if (!homemarketsInjected && processedHomeMarkets.length > 0 && batchCount % 3 === 0) {
           injectedContent = true;
-          patternStep = 1; // Switch preference
-        } else if (injectType === 'homemarket_group') {
-          console.log(`  📌 Injecting HOMEMARKET GROUP after batch ${batchCount} (${homemarkets.length} users)`);
-          result.push({ type: 'section_header', title: 'HOMEMARKET' });
+          result.push({ type: 'section_header', title: 'HOME MARKET' });
           result.push({ type: 'horizontal_line' });
-          result.push({ type: 'homemarket_group', users: homemarkets });
+          processedHomeMarkets.forEach(hm => {
+            result.push(hm);
+          });
           result.push({ type: 'horizontal_line' });
-
-          // Try to inject banner along with homemarket
-          if (bannerIndex < banners.length) {
-            console.log(`  📌 Injecting BANNER after HomeMarket`);
-            result.push(banners[bannerIndex++]);
-            result.push({ type: 'horizontal_line' });
-          }
-
-          injectedContent = true;
           homemarketsInjected = true;
           patternStep = 0; // Switch preference
         } else {
@@ -1834,7 +1866,7 @@ const getAdvertisementPublicView = async (req, res) => {
        LEFT JOIN ad_colors col ON a.color_id = col.id
        LEFT JOIN users u ON a.user_id = u.id
        LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
-       WHERE a.id = ? AND a.status = 'published'`,
+       WHERE a.id = ? AND a.status IN ('published', 'sold')`,
       [id]
     );
 

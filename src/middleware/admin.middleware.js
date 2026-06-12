@@ -173,9 +173,27 @@ function extractTargetId(path) {
     const match = path.match(/\/(\d+)/);
     return match ? parseInt(match[1]) : null;
 }
+const { authenticate } = require('./auth.middleware');
+
+/**
+ * Middleware to authenticate and authorize admin users
+ */
+const authenticateAdmin = (req, res, next) => {
+    authenticate(req, res, (err) => {
+        if (err) return next(err);
+        if (!req.user) {
+            return res.status(401).json({ success: false, message: 'Authentication required' });
+        }
+        if (!['admin', 'super_admin', 'editor'].includes(req.user.role)) {
+            return res.status(403).json({ success: false, message: 'Access denied - admin role required' });
+        }
+        next();
+    });
+};
 
 module.exports = {
     checkAdminRole,
     checkPermission,
     logAdminAction,
+    authenticateAdmin,
 };

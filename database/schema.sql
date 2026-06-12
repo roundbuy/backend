@@ -218,10 +218,12 @@ CREATE TABLE plan_prices (
 CREATE TABLE users (
     id INT PRIMARY KEY AUTO_INCREMENT,
     email VARCHAR(255) UNIQUE NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NULL,
     full_name VARCHAR(255) NOT NULL,
     phone VARCHAR(20),
     avatar VARCHAR(500),
+    social_provider ENUM('google', 'apple', 'instagram') NULL,
+    social_id VARCHAR(255) NULL,
     billing_address TEXT COMMENT 'Billing address for payments',
     role ENUM('subscriber', 'editor', 'admin') DEFAULT 'subscriber',
     subscription_plan_id INT DEFAULT NULL,
@@ -244,7 +246,24 @@ CREATE TABLE users (
     INDEX idx_subscription_end_date (subscription_end_date),
     INDEX idx_verification_token (verification_token),
     INDEX idx_country_code (country_code),
-    INDEX idx_currency_code (currency_code)
+    INDEX idx_currency_code (currency_code),
+    INDEX idx_users_social (social_provider, social_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Create user_social_accounts table
+CREATE TABLE IF NOT EXISTS user_social_accounts (
+    id INT PRIMARY KEY AUTO_INCREMENT,
+    user_id INT NOT NULL,
+    provider ENUM('google', 'apple', 'instagram') NOT NULL,
+    provider_id VARCHAR(255) NOT NULL,
+    access_token TEXT NULL,
+    refresh_token TEXT NULL,
+    token_expires_at DATETIME NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE KEY unique_provider_account (provider, provider_id),
+    INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Create subscription_plans table

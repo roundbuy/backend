@@ -151,10 +151,42 @@ exports.processOrder = async (req, res) => {
         const userId = req.user.id;
         const { advertisementId, conversationId, deliveryOption, paymentMethod, amount, paymentId, addressDetails } = req.body;
 
-        // Fetch Advertisement to link seller
-        const [ad] = await connection.query("SELECT user_id, title FROM advertisements WHERE id = ?", [advertisementId]);
-        if (!ad.length) throw new Error('Advertisement not found');
-        const sellerId = ad[0].user_id;
+        let sellerId;
+        let adTitle;
+        let finalAdvertisementId = advertisementId;
+
+        if (conversationId && conversationId.startsWith('event-')) {
+            const eventItemId = conversationId.split('-')[1];
+            const [eventItems] = await connection.query(
+                "SELECT uploaded_by, title, advertisement_id FROM event_items WHERE id = ?",
+                [eventItemId]
+            );
+            if (!eventItems.length) throw new Error('Event item not found');
+            
+            sellerId = eventItems[0].uploaded_by;
+            adTitle = eventItems[0].title;
+            finalAdvertisementId = eventItems[0].advertisement_id || null;
+
+            // Update purchase_completed = 1 and status = 'sold' in event_items for that item ID
+            await connection.query(
+                "UPDATE event_items SET purchase_completed = 1, status = 'sold' WHERE id = ?",
+                [eventItemId]
+            );
+            
+            // If linked to an advertisement, mark that advertisement as sold as well
+            if (finalAdvertisementId) {
+                await connection.query(
+                    "UPDATE advertisements SET status = 'sold' WHERE id = ?",
+                    [finalAdvertisementId]
+                );
+            }
+        } else {
+            // Fetch Advertisement to link seller
+            const [ad] = await connection.query("SELECT user_id, title FROM advertisements WHERE id = ?", [advertisementId]);
+            if (!ad.length) throw new Error('Advertisement not found');
+            sellerId = ad[0].user_id;
+            adTitle = ad[0].title;
+        }
 
         // 1. Handle Wallet Payment
         if (paymentMethod === 'wallet') {
@@ -177,7 +209,7 @@ exports.processOrder = async (req, res) => {
                 `INSERT INTO wallet_transactions 
                  (user_id, transaction_type, amount, balance_before, balance_after, category, status, description)
                  VALUES (?, 'debit', ?, ?, ?, 'payment', 'completed', ?)`,
-                [userId, amount, balance, balance - amount, 'Payment for Order: ' + ad[0].title]
+                [userId, amount, balance, balance - amount, 'Payment for Order: ' + adTitle]
             );
         }
 
@@ -190,20 +222,52 @@ exports.processOrder = async (req, res) => {
             `INSERT INTO orders 
              (buyer_id, seller_id, advertisement_id, amount, status, payment_status, payment_method, payment_id, shipping_address, notes) 
              VALUES (?, ?, ?, ?, 'confirmed', 'completed', ?, ?, ?, ?)`,
-            [userId, sellerId, advertisementId, amount, paymentMethod, paymentId || null, addressJson, notes]
+            [userId, sellerId, finalAdvertisementId, amount, paymentMethod, paymentId || null, addressJson, notes]
         );
         const orderId = orderResult.insertId;
 
         // 3. Create Order Item
         await connection.query(
             "INSERT INTO order_items (order_id, advertisement_id, quantity, price) VALUES (?, ?, 1, ?)",
-            [orderId, advertisementId, amount]
+            [orderId, finalAdvertisementId, amount]
         );
 
         // 4. If part of a conversation flow, update that conversation step 
         // (This would hypothetically mark step 3 complete depending on the exact schema)
 
         await connection.commit();
+
+        // --- KYC GATE: Update seller's cumulative earnings after successful order ---
+        try {
+            // Increment seller's cumulative_earnings
+            await promisePool.query(
+                `UPDATE users 
+                 SET cumulative_earnings = cumulative_earnings + ?
+                 WHERE id = ?`,
+                [amount, sellerId]
+            );
+
+            // Check if seller has crossed the £1000 threshold
+            const [sellerKyc] = await promisePool.query(
+                `SELECT cumulative_earnings, kyc_required, kyc_completed FROM users WHERE id = ?`,
+                [sellerId]
+            );
+
+            if (sellerKyc.length > 0) {
+                const { cumulative_earnings, kyc_required, kyc_completed } = sellerKyc[0];
+                if (cumulative_earnings >= 1000 && !kyc_required && !kyc_completed) {
+                    await promisePool.query(
+                        `UPDATE users SET kyc_required = 1 WHERE id = ?`,
+                        [sellerId]
+                    );
+                    console.log(`[KYC GATE] Seller ${sellerId} crossed £1000 threshold. KYC required flag set.`);
+                }
+            }
+        } catch (kycErr) {
+            // Non-blocking: don't fail the order if KYC update fails
+            console.error('[KYC GATE] Failed to update earnings/KYC flag:', kycErr.message);
+        }
+
         res.json({ success: true, message: 'Order processed successfully', orderId });
     } catch (error) {
         await connection.rollback();

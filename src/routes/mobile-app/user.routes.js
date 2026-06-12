@@ -12,8 +12,21 @@ const {
   getDataRequest,
   checkUsernameAvailability,
   updateUsername,
-  getUserMetrics
+  getUserMetrics,
+  getUserProfile,
+  updateUserProfile,
+  setCountryPreference,
+  dismissKycReminder,
+  detectCountry
 } = require('../../controllers/mobile-app/user.controller');
+
+/**
+ * @route GET /api/v1/mobile-app/user/detect-country
+ * @desc Auto-detect user country from IP (public, no auth)
+ * @access Public
+ */
+router.get('/detect-country', detectCountry);
+
 
 /**
  * @route GET /api/v1/mobile-app/user/metrics
@@ -33,23 +46,31 @@ router.post('/profile-image', authenticate, updateProfileImage);
 
 /**
  * @route GET /api/v1/mobile-app/user/profile
- * @desc Get current user's profile information
+ * @desc Get current user's profile information (includes KYC + country fields)
  * @access Private
  */
-router.get('/profile', authenticate, async (req, res) => {
-  req.params.id = req.user.id;
-  return getUserById(req, res);
-});
+router.get('/profile', authenticate, getUserProfile);
 
 /**
  * @route PUT /api/v1/mobile-app/user/profile
  * @desc Update current user's profile information
  * @access Private
  */
-router.put('/profile', authenticate, async (req, res) => {
-  req.params.id = req.user.id;
-  return updateUser(req, res);
-});
+router.put('/profile', authenticate, updateUserProfile);
+
+/**
+ * @route PUT /api/v1/mobile-app/user/country-preference
+ * @desc Save user's selected country and currency preference
+ * @access Private
+ */
+router.put('/country-preference', authenticate, setCountryPreference);
+
+/**
+ * @route POST /api/v1/mobile-app/user/kyc-remind-later
+ * @desc Dismiss KYC popup for 24 hours
+ * @access Private
+ */
+router.post('/kyc-remind-later', authenticate, dismissKycReminder);
 
 /**
  * @route POST /api/v1/mobile-app/user/verify-credentials

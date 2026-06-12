@@ -48,6 +48,27 @@ router.post('/forgot-password', mobileAuthController.forgotPassword);
 router.post('/reset-password', mobileAuthController.resetPassword);
 
 /**
+ * @route POST /api/v1/mobile-app/auth/apple-login
+ * @desc Sign in with Apple
+ * @access Public
+ */
+router.post('/apple-login', mobileAuthController.appleLogin);
+
+/**
+ * @route POST /api/v1/mobile-app/auth/google-login
+ * @desc Sign in with Google
+ * @access Public
+ */
+router.post('/google-login', mobileAuthController.googleLogin);
+
+/**
+ * @route POST /api/v1/mobile-app/auth/instagram-login
+ * @desc Sign in with Instagram
+ * @access Public
+ */
+router.post('/instagram-login', mobileAuthController.instagramLogin);
+
+/**
  * @route POST /api/v1/mobile-app/auth/change-password
  * @desc Change password (requires authentication)
  * @access Private

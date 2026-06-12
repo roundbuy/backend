@@ -21,7 +21,12 @@ async function createAdminUser() {
         );
 
         if (existing.length > 0) {
-            console.log('✅ Admin user already exists!');
+            console.log('⚠️ Admin user already exists. Resetting password...');
+            await promisePool.execute(
+                'UPDATE users SET password_hash = ?, role = "admin", is_active = 1 WHERE email = ?',
+                [hashedPassword, email]
+            );
+            console.log('✅ Admin user password reset successfully!');
             console.log('   Email:', email);
             console.log('   Password:', password);
             return;

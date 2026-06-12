@@ -149,7 +149,9 @@ const getUserProfile = async (req, res) => {
         const [users] = await promisePool.query(
             `SELECT id, email, full_name, phone, avatar, country_code, 
                created_at, updated_at, last_username_change, username, referral_code,
-               measurement_unit, lottery_credits
+               measurement_unit, lottery_credits,
+               cumulative_earnings, kyc_required, kyc_completed, kyc_remind_after,
+               preferred_country, preferred_currency
         FROM users WHERE id = ?`,
             [userId]
         );
@@ -837,6 +839,117 @@ const getUserMetrics = async (req, res) => {
     }
 };
 
+/**
+ * Save user's selected country and currency preference
+ * PUT /api/v1/mobile-app/user/country-preference
+ */
+const setCountryPreference = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { country, currency, language } = req.body;
+
+        if (!country) {
+            return res.status(400).json({ success: false, message: 'Country is required' });
+        }
+
+        await promisePool.query(
+            `UPDATE users SET preferred_country = ?, preferred_currency = ?, updated_at = NOW() WHERE id = ?`,
+            [country, currency || 'GBP', userId]
+        );
+
+        res.json({
+            success: true,
+            message: 'Country preference saved',
+            data: { country, currency, language }
+        });
+    } catch (error) {
+        console.error('Set country preference error:', error);
+        res.status(500).json({ success: false, message: 'Error saving country preference' });
+    }
+};
+
+/**
+ * Dismiss KYC popup for 24 hours (Remind me later)
+ * POST /api/v1/mobile-app/user/kyc-remind-later
+ */
+const dismissKycReminder = async (req, res) => {
+    try {
+        const userId = req.user.id;
+
+        // Set remind_after to 24 hours from now
+        const remindAfter = new Date(Date.now() + 24 * 60 * 60 * 1000);
+
+        await promisePool.query(
+            `UPDATE users SET kyc_remind_after = ? WHERE id = ?`,
+            [remindAfter, userId]
+        );
+
+        res.json({
+            success: true,
+            message: 'KYC reminder snoozed for 24 hours',
+            data: { remind_after: remindAfter }
+        });
+    } catch (error) {
+        console.error('Dismiss KYC reminder error:', error);
+        res.status(500).json({ success: false, message: 'Error dismissing reminder' });
+    }
+};
+
+/**
+ * Detect country from client IP using geoip-lite (offline DB)
+ * GET /api/v1/mobile-app/user/detect-country
+ * Public endpoint — no authentication required
+ */
+const detectCountry = (req, res) => {
+    try {
+        let geoip;
+        try {
+            geoip = require('geoip-lite');
+        } catch (e) {
+            // geoip-lite not installed — return default
+            return res.json({ success: true, data: { country_code: 'GB', country_name: 'United Kingdom', source: 'default' } });
+        }
+
+        // Get client IP — handle proxies
+        const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+            || req.connection?.remoteAddress
+            || req.socket?.remoteAddress
+            || req.ip;
+
+        // Localhost IPs return null from geoip
+        const isLocal = !ip || ip === '127.0.0.1' || ip === '::1' || ip.startsWith('192.168.') || ip.startsWith('10.');
+
+        if (isLocal) {
+            return res.json({ success: true, data: { country_code: 'GB', country_name: 'United Kingdom', source: 'default_local' } });
+        }
+
+        const geo = geoip.lookup(ip);
+
+        if (!geo) {
+            return res.json({ success: true, data: { country_code: 'GB', country_name: 'United Kingdom', source: 'lookup_failed' } });
+        }
+
+        // Map country code to name
+        const countryNames = {
+            'GB': 'United Kingdom', 'US': 'United States', 'AU': 'Australia',
+            'CA': 'Canada', 'NZ': 'New Zealand', 'IE': 'Ireland',
+            'FR': 'France', 'DE': 'Germany', 'IT': 'Italy', 'ES': 'Spain',
+            'NL': 'Netherlands', 'BE': 'Belgium', 'SE': 'Sweden', 'NO': 'Norway',
+            'DK': 'Denmark', 'CH': 'Switzerland', 'AT': 'Austria', 'PT': 'Portugal',
+            'PL': 'Poland', 'JP': 'Japan', 'IN': 'India', 'AE': 'UAE',
+            'SA': 'Saudi Arabia', 'SG': 'Singapore', 'ZA': 'South Africa', 'BR': 'Brazil',
+        };
+
+        const countryCode = geo.country || 'GB';
+        const countryName = countryNames[countryCode] || countryCode;
+
+        res.json({ success: true, data: { country_code: countryCode, country_name: countryName, source: 'geoip' } });
+    } catch (error) {
+        console.error('detectCountry error:', error);
+        res.json({ success: true, data: { country_code: 'GB', country_name: 'United Kingdom', source: 'error_fallback' } });
+    }
+};
+
 module.exports = {
     updateProfileImage,
     getUserProfile,
@@ -849,5 +962,8 @@ module.exports = {
     getDataRequest,
     checkUsernameAvailability,
     updateUsername,
-    getUserMetrics
+    getUserMetrics,
+    setCountryPreference,
+    dismissKycReminder,
+    detectCountry
 };

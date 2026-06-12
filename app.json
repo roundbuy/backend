@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "206588e9-490d-44ec-a660-2deba2b7567d"
+      }
+    },
+    "ios": {
+      "bundleIdentifier": "com.buyaround.roundbuy",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    }
+  }
+}
