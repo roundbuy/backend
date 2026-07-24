@@ -1040,15 +1040,28 @@ const browseAdvertisements = async (req, res) => {
         AND (expiry_date IS NULL OR expiry_date > NOW())
       )`;
     } else {
-      // Exclude ads that are ONLY in showcases (to prevent duplicates) from the main list
-      whereClause += ` AND a.id NOT IN (
-          SELECT DISTINCT advertisement_id
-          FROM product_badges
-          WHERE badge_type = 'visibility'
-          AND badge_level = 'show_casing'
-          AND showcase_group_id IS NOT NULL
-          AND is_active = TRUE
-        )`;
+      // If we are browsing standard listings on landing page (no search/category filter),
+      // exclude all active showcased, homemarket, and promoted ads to prevent them from
+      // pushing down standard listings.
+      if (!search && !category_id && !subcategory_id && !activity_id && !condition_id) {
+        whereClause += ` AND a.id NOT IN (
+            SELECT DISTINCT advertisement_id
+            FROM product_badges
+            WHERE badge_type = 'visibility'
+            AND badge_level IN ('show_casing', 'homemarket-gold-7-days', 'homemarket-orange-7-days', 'homemarket-green-7-days')
+            AND is_active = TRUE
+          )`;
+      } else {
+        // Exclude ads that are ONLY in showcases (to prevent duplicates) from the main list
+        whereClause += ` AND a.id NOT IN (
+            SELECT DISTINCT advertisement_id
+            FROM product_badges
+            WHERE badge_type = 'visibility'
+            AND badge_level = 'show_casing'
+            AND showcase_group_id IS NOT NULL
+            AND is_active = TRUE
+          )`;
+      }
     }
 
     // Search query
@@ -1352,6 +1365,78 @@ const browseAdvertisements = async (req, res) => {
     const total = countResult[0]?.total || 0;
     const totalPages = Math.ceil(total / limit);
 
+    // Fetch recommendations if user is authenticated and no search/category query is active
+    let recommendations = [];
+    if (req.user && req.user.id && !search && !category_id && !subcategory_id && !activity_id && !condition_id && !badge_level_filter) {
+      try {
+        const [interests] = await promisePool.query(
+          'SELECT category_ids FROM user_interests WHERE user_id = ? LIMIT 1',
+          [req.user.id]
+        );
+        if (interests.length > 0 && interests[0].category_ids) {
+          const categoryIds = JSON.parse(interests[0].category_ids);
+          if (categoryIds && categoryIds.length > 0) {
+            let locationWhereRec = '';
+            let paramsRec = [];
+            if (latitude && longitude) {
+              locationWhereRec = `
+                AND (
+                  SELECT MIN(6371 * acos(cos(radians(?)) * cos(radians(ul_sub.latitude)) *
+                  cos(radians(ul_sub.longitude) - radians(?)) + sin(radians(?)) *
+                  sin(radians(ul_sub.latitude))))
+                  FROM advertisement_locations al_sub
+                  JOIN user_locations ul_sub ON al_sub.location_id = ul_sub.id
+                  WHERE al_sub.advertisement_id = a.id
+                ) <= ?
+              `;
+              paramsRec.push(parseFloat(latitude), parseFloat(longitude), parseFloat(latitude), parseFloat(radius || 50));
+            }
+
+            const recQuery = `
+              SELECT a.*, c.name as category_name, sc.name as subcategory_name,
+                     MAX(ul.name) as location_name, MAX(ul.city) as city, MAX(ul.country) as country,
+                     u.full_name as seller_name
+              FROM advertisements a
+              LEFT JOIN categories c ON a.category_id = c.id
+              LEFT JOIN categories sc ON a.subcategory_id = sc.id
+              LEFT JOIN advertisement_locations al ON a.id = al.advertisement_id
+              LEFT JOIN user_locations ul ON al.location_id = ul.id
+              LEFT JOIN users u ON a.user_id = u.id
+              WHERE a.status = 'published'
+                AND a.category_id IN (?)
+                ${locationWhereRec}
+              GROUP BY a.id
+              ORDER BY a.created_at DESC
+              LIMIT 10
+            `;
+            const [recAds] = await promisePool.query(recQuery, [categoryIds, ...paramsRec]);
+            if (recAds.length > 0) {
+              const recAdIds = recAds.map(ad => ad.id);
+              const [recBadges] = await promisePool.query(
+                `SELECT advertisement_id, badge_type as type, badge_level as level 
+                 FROM product_badges 
+                 WHERE advertisement_id IN (?) AND is_active = TRUE`,
+                [recAdIds]
+              );
+              const recBadgesMap = {};
+              recBadges.forEach(b => {
+                if (!recBadgesMap[b.advertisement_id]) recBadgesMap[b.advertisement_id] = [];
+                recBadgesMap[b.advertisement_id].push({ type: b.type, level: b.level });
+              });
+              recommendations = recAds.map(item => ({
+                ...item,
+                images: item.images ? JSON.parse(item.images) : [],
+                badges: recBadgesMap[item.id] || [],
+                locations: []
+              }));
+            }
+          }
+        }
+      } catch (e) {
+        console.error('Error fetching recommendations:', e);
+      }
+    }
+
     let assembledAds = processedAds;
 
     // Only assemble feed (inject banners, showcases, homemarkets) if not filtering by a specific user
@@ -1360,14 +1445,14 @@ const browseAdvertisements = async (req, res) => {
       const homemarkets = await fetchActiveHomeMarkets({ latitude, longitude, radius });
       const banners = await fetchActiveBannerAds();
       const trendingGalleries = await fetchTrendingGalleries({ latitude, longitude, radius });
-      assembledAds = await assembleProductListing(processedAds, showcases, homemarkets, banners, trendingGalleries);
+      assembledAds = await assembleProductListing(processedAds, showcases, homemarkets, banners, trendingGalleries, recommendations);
     }
 
     res.json({
       success: true,
       data: {
         advertisements: assembledAds.map(item => {
-          if (['showcase', 'homemarket_group', 'homemarket', 'banner', 'section_header'].includes(item.type)) {
+          if (['showcase', 'homemarket_group', 'homemarket', 'banner', 'section_header', 'promotions', 'recommendations'].includes(item.type)) {
             return item;
           }
           // Process regular ad
@@ -1738,11 +1823,13 @@ async function fetchActiveBannerAds() {
  * Helper function to assemble product listing with correct order
  * Order: Promotions -> Standard Listings with injections (ShowCasing, HomeMarket, Banners)
  */
-async function assembleProductListing(ads, showcases, homemarkets, banners, trendingGalleries = []) {
+async function assembleProductListing(ads, showcases, homemarkets, banners, trendingGalleries = [], recommendations = []) {
   try {
     const seenAdIds = new Set();
 
-    // Order: 1. ShowCasing  2. Boosted  3. Standard/Normal  4. Trending Galleries
+    // 0. Recommendations
+    const processedRecommendations = recommendations.filter(ad => !seenAdIds.has(ad.id));
+    processedRecommendations.forEach(ad => seenAdIds.add(ad.id));
 
     // 1. Showcases
     const processedShowcases = showcases.map(sc => {
@@ -1780,8 +1867,14 @@ async function assembleProductListing(ads, showcases, homemarkets, banners, tren
     const result = [];
     const PRODUCTS_PER_BATCH = 6;
 
+    // ── Section 0: Recommendations for you ────────────────────────────────
+    // These must appear at the VERY TOP of the landing feed.
+    if (processedRecommendations.length > 0) {
+      result.push({ type: 'recommendations', products: processedRecommendations });
+    }
+
     // ── Section 1: Promotions (Top Spot / Rise to Top) ────────────────────
-    // These must appear FIRST so boosted items are always visible at the top.
+    // These must appear after recommendations.
     if (promotions.length > 0) {
       result.push({ type: 'promotions', products: promotions });
     }
