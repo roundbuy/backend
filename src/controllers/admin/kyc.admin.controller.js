@@ -87,7 +87,7 @@ exports.reviewSubmission = async (req, res) => {
         const { status, rejection_reason } = req.body;
         const adminId = req.user.id;
 
-        if (!['approved', 'rejected'].includes(status)) {
+        if (!['approved', 'verified', 'rejected'].includes(status)) {
             return res.status(400).json({ success: false, message: 'Invalid status' });
         }
 
@@ -101,29 +101,34 @@ exports.reviewSubmission = async (req, res) => {
         }
 
         const userId = kyc[0].user_id;
+        const dbStatus = (status === 'approved' || status === 'verified') ? 'verified' : status;
 
         await db.query(`
             UPDATE kyc_records 
             SET status = ?, rejection_reason = ?, updated_at = NOW() 
             WHERE id = ?
-        `, [status, status === 'rejected' ? rejection_reason : null, id]);
+        `, [dbStatus, status === 'rejected' ? rejection_reason : null, id]);
 
-        if (status === 'approved') {
-            await db.query(`UPDATE users SET kyc_status = 'approved', kyc_completed = 1, kyc_required = 0 WHERE id = ?`, [userId]);
+        if (status === 'approved' || status === 'verified') {
+            await db.query(`UPDATE users SET kyc_status = 'verified', kyc_completed = 1, kyc_required = 0 WHERE id = ?`, [userId]);
         } else {
             await db.query(`UPDATE users SET kyc_status = 'rejected', kyc_completed = 0, kyc_required = 1 WHERE id = ?`, [userId]);
         }
 
         // Log admin activity
-        await db.query(`
-            INSERT INTO admin_activity_logs (admin_id, action, target_type, target_id, details)
-            VALUES (?, ?, 'kyc_record', ?, ?)
-        `, [adminId, `KYC_${status.toUpperCase()}`, id, JSON.stringify({ reason: rejection_reason })]);
+        try {
+            await db.query(`
+                INSERT INTO admin_activity_logs (admin_id, action, entity_type, entity_id, new_value)
+                VALUES (?, ?, 'kyc_record', ?, ?)
+            `, [adminId, `KYC_${dbStatus.toUpperCase()}`, id, JSON.stringify({ reason: rejection_reason })]);
+        } catch (logErr) {
+            console.error('Failed to log admin activity:', logErr);
+        }
 
         // Send notification to user
         try {
-            const notifTitle = status === 'approved' ? 'KYC Verification Approved' : 'KYC Verification Rejected';
-            const notifMessage = status === 'approved' 
+            const notifTitle = (status === 'approved' || status === 'verified') ? 'KYC Verification Approved' : 'KYC Verification Rejected';
+            const notifMessage = (status === 'approved' || status === 'verified') 
                 ? 'Congratulations! Your identity verification has been approved.' 
                 : `Your identity verification was rejected. Reason: ${rejection_reason}`;
             
@@ -140,7 +145,7 @@ exports.reviewSubmission = async (req, res) => {
             console.error('Failed to send KYC notification:', notifErr);
         }
 
-        res.json({ success: true, message: `KYC submission ${status}` });
+        res.json({ success: true, message: `KYC submission ${dbStatus}` });
     } catch (error) {
         console.error('Error reviewing KYC submission:', error);
         res.status(500).json({ success: false, message: 'Server Error' });

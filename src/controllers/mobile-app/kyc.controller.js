@@ -1,13 +1,48 @@
 const { promisePool: db } = require('../../config/database');
 
 /**
+ * Helper to check if user is eligible for KYC / KYB verification
+ */
+async function isEligibleForKYC(userId) {
+    try {
+        const [users] = await db.query(
+            `SELECT u.user_type, u.cumulative_earnings, sp.slug as subscription_plan_slug
+             FROM users u
+             LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
+             WHERE u.id = ?`,
+            [userId]
+        );
+
+        if (users.length === 0) return false;
+        const user = users[0];
+
+        const isBusiness = user.user_type === 'business' || 
+                           (user.subscription_plan_slug && 
+                            (user.subscription_plan_slug.toLowerCase().includes('business') || 
+                             user.subscription_plan_slug.toLowerCase().includes('pro')));
+        const hasReachedLimit = parseFloat(user.cumulative_earnings || 0) >= 1000;
+
+        return isBusiness || hasReachedLimit;
+    } catch (error) {
+        console.error('Error in isEligibleForKYC helper:', error);
+        return false;
+    }
+}
+
+/**
  * Get required document types for a given country
  */
 exports.getDocumentTypes = async (req, res) => {
     try {
+        const userId = req.user.id;
         const { country_code } = req.query;
         if (!country_code) {
             return res.status(400).json({ success: false, message: 'country_code query parameter is required' });
+        }
+
+        const eligible = await isEligibleForKYC(userId);
+        if (!eligible) {
+            return res.status(403).json({ success: false, message: 'KYC/KYB is not required or accessible for this account yet.' });
         }
 
         const [rows] = await db.query(
@@ -32,6 +67,11 @@ exports.submitKyc = async (req, res) => {
 
         if (!country_code || !document_type) {
             return res.status(400).json({ success: false, message: 'country_code and document_type are required' });
+        }
+
+        const eligible = await isEligibleForKYC(userId);
+        if (!eligible) {
+            return res.status(403).json({ success: false, message: 'KYC/KYB is not required or accessible for this account yet.' });
         }
 
         const files = req.files || {};
@@ -97,16 +137,28 @@ exports.submitKyc = async (req, res) => {
 exports.getKycStatus = async (req, res) => {
     try {
         const userId = req.user.id;
+
+        const eligible = await isEligibleForKYC(userId);
+        if (!eligible) {
+            return res.json({ success: true, data: { status: 'not_required' } });
+        }
+
         const [rows] = await db.query(`
-            SELECT id, status, country_code, document_type, rejection_reason, created_at, updated_at
-            FROM kyc_records WHERE user_id = ?
+            SELECT id, status, country_code, document_type, rejection_reason, reviewer_notes, created_at, updated_at
+            FROM kyc_records WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1
         `, [userId]);
 
         if (rows.length === 0) {
-            return res.json({ success: true, data: { status: 'unverified' } });
+            return res.json({ success: true, data: { status: 'upload' } });
         }
 
-        res.json({ success: true, data: rows[0] });
+        const row = rows[0];
+        // Normalise DB status to frontend states
+        const statusMap = { not_started: 'upload', pending: 'pending', verified: 'approved', rejected: 'rejected', more_info: 'more_info' };
+        const status = statusMap[row.status] || 'upload';
+        const message = row.rejection_reason || row.reviewer_notes || '';
+
+        res.json({ success: true, data: { status, message, created_at: row.created_at, updated_at: row.updated_at } });
     } catch (error) {
         console.error('Error getting KYC status:', error);
         res.status(500).json({ success: false, message: 'Server Error' });

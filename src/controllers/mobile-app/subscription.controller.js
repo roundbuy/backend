@@ -1138,6 +1138,188 @@ const getCurrentSubscription = async (req, res) => {
   }
 };
 
+/**
+ * Create a Stripe SetupIntent for saving a card with off-session mandate
+ * POST /api/v1/mobile-app/subscription/create-setup-intent
+ */
+const createSetupIntent = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // stripe_customer_id lives on the users table in this project
+    const [users] = await promisePool.query(
+      'SELECT id, email, full_name, stripe_customer_id FROM users WHERE id = ?', [userId]
+    );
+    if (!users.length) return res.status(404).json({ success: false, message: 'User not found' });
+    const user = users[0];
+
+    const stripe = await getStripeInstance();
+
+    // Get or create Stripe customer
+    let stripeCustomerId = user.stripe_customer_id || null;
+    if (!stripeCustomerId) {
+      const customer = await stripe.customers.create({
+        email: user.email,
+        name:  user.full_name,
+        metadata: { user_id: String(userId) },
+      });
+      stripeCustomerId = customer.id;
+      await promisePool.query(
+        'UPDATE users SET stripe_customer_id = ? WHERE id = ?',
+        [stripeCustomerId, userId]
+      );
+    }
+
+    const setupIntent = await stripe.setupIntents.create({
+      customer: stripeCustomerId,
+      payment_method_types: ['card'],
+      usage: 'off_session',
+      metadata: { user_id: String(userId) },
+    });
+
+    res.json({
+      success: true,
+      data: { client_secret: setupIntent.client_secret, customer_id: stripeCustomerId },
+    });
+  } catch (error) {
+    console.error('Create setup intent error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Save a confirmed payment method after SetupIntent confirmation
+ * POST /api/v1/mobile-app/subscription/save-payment-method
+ */
+const savePaymentMethod = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { payment_method_id, set_as_default = false } = req.body;
+
+    if (!payment_method_id) {
+      return res.status(400).json({ success: false, message: 'payment_method_id is required' });
+    }
+
+    const stripe = await getStripeInstance();
+    const pm = await stripe.paymentMethods.retrieve(payment_method_id);
+
+    if (!pm.card) {
+      return res.status(400).json({ success: false, message: 'Payment method is not a card' });
+    }
+
+    // Check if already saved
+    const [existing] = await promisePool.query(
+      'SELECT id FROM saved_payment_methods WHERE user_id = ? AND provider_payment_method_id = ? AND is_active = TRUE',
+      [userId, payment_method_id]
+    );
+    if (existing.length) {
+      return res.json({ success: true, message: 'Card already saved', data: { id: existing[0].id } });
+    }
+
+    // If set_as_default, clear existing defaults
+    if (set_as_default) {
+      await promisePool.query(
+        'UPDATE saved_payment_methods SET is_default = FALSE WHERE user_id = ?', [userId]
+      );
+    }
+
+    const isFirstCard = (await promisePool.query(
+      'SELECT COUNT(*) as cnt FROM saved_payment_methods WHERE user_id = ? AND is_active = TRUE', [userId]
+    ))[0][0].cnt === 0;
+
+    const [result] = await promisePool.query(
+      `INSERT INTO saved_payment_methods
+       (user_id, payment_method_type, provider, provider_payment_method_id, last_four, card_brand, expiry_month, expiry_year, is_default)
+       VALUES (?, 'card', 'stripe', ?, ?, ?, ?, ?, ?)`,
+      [userId, payment_method_id, pm.card.last4, pm.card.brand, pm.card.exp_month, pm.card.exp_year, (set_as_default || isFirstCard) ? 1 : 0]
+    );
+
+    res.json({
+      success: true,
+      message: 'Payment method saved',
+      data: {
+        id: result.insertId,
+        last_four: pm.card.last4,
+        card_brand: pm.card.brand,
+        expiry_month: pm.card.exp_month,
+        expiry_year: pm.card.exp_year,
+        is_default: set_as_default || isFirstCard,
+      },
+    });
+  } catch (error) {
+    console.error('Save payment method error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Remove a saved payment method
+ * DELETE /api/v1/mobile-app/subscription/payment-methods/:id
+ */
+const removePaymentMethod = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const [rows] = await promisePool.query(
+      'SELECT id, provider_payment_method_id, is_default FROM saved_payment_methods WHERE id = ? AND user_id = ? AND is_active = TRUE',
+      [id, userId]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Payment method not found' });
+
+    const pm = rows[0];
+
+    // Detach from Stripe (best-effort)
+    try {
+      const stripe = await getStripeInstance();
+      await stripe.paymentMethods.detach(pm.provider_payment_method_id);
+    } catch (_) {}
+
+    // Soft delete
+    await promisePool.query(
+      'UPDATE saved_payment_methods SET is_active = FALSE WHERE id = ?', [pm.id]
+    );
+
+    // If this was default, promote the next card
+    if (pm.is_default) {
+      await promisePool.query(
+        `UPDATE saved_payment_methods SET is_default = TRUE
+         WHERE user_id = ? AND is_active = TRUE ORDER BY created_at ASC LIMIT 1`,
+        [userId]
+      );
+    }
+
+    res.json({ success: true, message: 'Payment method removed' });
+  } catch (error) {
+    console.error('Remove payment method error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Set a saved payment method as default
+ * PUT /api/v1/mobile-app/subscription/payment-methods/:id/default
+ */
+const setDefaultPaymentMethod = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+
+    const [rows] = await promisePool.query(
+      'SELECT id FROM saved_payment_methods WHERE id = ? AND user_id = ? AND is_active = TRUE',
+      [id, userId]
+    );
+    if (!rows.length) return res.status(404).json({ success: false, message: 'Payment method not found' });
+
+    await promisePool.query('UPDATE saved_payment_methods SET is_default = FALSE WHERE user_id = ?', [userId]);
+    await promisePool.query('UPDATE saved_payment_methods SET is_default = TRUE WHERE id = ?', [id]);
+
+    res.json({ success: true, message: 'Default payment method updated' });
+  } catch (error) {
+    console.error('Set default payment method error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 module.exports = {
   getPlans,
   getPlanDetails,
@@ -1148,5 +1330,9 @@ module.exports = {
   getCurrentSubscription,
   getTransactionStatus,
   getSavedPaymentMethods,
-  getStripeConfig
+  getStripeConfig,
+  createSetupIntent,
+  savePaymentMethod,
+  removePaymentMethod,
+  setDefaultPaymentMethod,
 };

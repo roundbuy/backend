@@ -174,115 +174,237 @@ const getActionCenterMessages = async (req, res) => {
         };
 
         // 2. Enhance with Offer and Pickup
-        const actionItems = await Promise.all(conversations.map(async (conv) => {
+        const actionItems = [];
+
+        const getPrimaryImage = (imagesStr) => {
+            try {
+                const images = JSON.parse(imagesStr);
+                if (images && images.length > 0) return images[0];
+            } catch (e) {}
+            return null;
+        };
+
+        for (const conv of conversations) {
             // Get latest offer
-            const [offers] = await promisePool.execute(`
-                SELECT * FROM offers WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1
-            `, [conv.conversation_id]);
+            const [offers] = await promisePool.execute(
+                'SELECT * FROM offers WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1',
+                [conv.conversation_id]
+            );
             const latestOffer = offers[0];
 
-            let latestPickup = null;
-            if (latestOffer && latestOffer.status === 'accepted') {
-                const [pickups] = await promisePool.execute(`
-                    SELECT * FROM pickup_schedules WHERE offer_id = ? ORDER BY created_at DESC LIMIT 1
-                `, [latestOffer.id]);
-                latestPickup = pickups[0];
+            // Get order
+            const [orders] = await promisePool.execute(
+                'SELECT id, status, payment_method, notes, buyer_confirmed, seller_confirmed, created_at, updated_at FROM orders WHERE buyer_id = ? AND advertisement_id = ? AND status IN ("confirmed", "shipped", "delivered", "completed")',
+                [conv.buyer_id, conv.advertisement_id]
+            );
+            const order = orders[0];
+
+            // 1. Enquiry Notification (if matches keywords or if no offer/order exists)
+            const [msgRows] = await promisePool.execute(
+                `SELECT id, created_at FROM messages WHERE conversation_id = ? AND sender_id = ? 
+                 AND (
+                     message LIKE '%?%' OR 
+                     message LIKE '%what%' OR 
+                     message LIKE '%how%' OR 
+                     message LIKE '%when%' OR 
+                     message LIKE '%http%' OR 
+                     message LIKE '%/uploads/image-%'
+                 ) LIMIT 1`,
+                [conv.conversation_id, conv.buyer_id]
+            );
+            if (msgRows.length > 0 || (!latestOffer && !order)) {
+                const enquirySortDate = msgRows[0]?.created_at || conv.last_message_at;
+                actionItems.push({
+                    id: `${conv.conversation_id}-enquiry`,
+                    conversationId: conv.conversation_id,
+                    advertisementId: conv.advertisement_id,
+                    itemImage: getPrimaryImage(conv.advertisement_images),
+                    userAvatar: conv.userAvatar,
+                    itemTitle: conv.itemTitle,
+                    itemPrice: conv.itemPrice,
+                    username: conv.username || 'User',
+                    statusText: 'Enquiry active',
+                    stepNumber: '1/6 Step',
+                    actionText: type === 'buying' ? 'Action: View Enquiry!' : 'Action: Provide item info!',
+                    timestamp: formatTime(enquirySortDate),
+                    sortDate: new Date(enquirySortDate),
+                    filterCategories: ['All', 'Enquiry', 'Active']
+                });
             }
 
-            // Determine Status and Step Number
-            let statusText = 'Enquiry';
-            let stepNumber = '1/6 Step';
-            let actionText = 'Action: View Enquiry!';
-            let filterCategories = ['All'];
-
-            if (!latestOffer) {
-                statusText = 'Enquiry active';
-                stepNumber = '1/6 Step';
-                actionText = 'Action: Provide item info!';
-                filterCategories.push('Enquiry', 'Active');
-            } else {
+            // 2. Offer Notification
+            if (latestOffer) {
+                let statusText = 'Offer';
+                let actionText = '';
+                let filterCategories = ['All', 'Offers'];
+                
                 if (latestOffer.status === 'pending') {
                     statusText = 'Offer ' + (latestOffer.currency_code || '£') + latestOffer.offered_price;
-                    stepNumber = '2/6 Step';
                     actionText = type === 'buying' ? 'Action: See Offer!' : 'Action: Review Offer!';
-                    filterCategories.push('Offers', 'Active', 'Unread');
+                    filterCategories.push('Active', 'Unread');
                 } else if (latestOffer.status === 'rejected') {
                     statusText = 'Offer Declined';
-                    stepNumber = '2/6 Step';
-                    actionText = 'Action: Make a new Offer!';
+                    actionText = 'Action: Offer was declined';
                     filterCategories.push('Declined');
                 } else if (latestOffer.status === 'counter_offered') {
                     statusText = 'Counter Offer ' + (latestOffer.currency_code || '£') + latestOffer.offered_price;
-                    stepNumber = '2/6 Step';
                     actionText = 'Action: Review Offer!';
-                    filterCategories.push('Offers', 'Active');
+                    filterCategories.push('Active');
                 } else if (latestOffer.status === 'accepted') {
-                    if (!latestPickup) {
-                        statusText = 'Delivery Option';
-                        stepNumber = '3/6 Step';
-                        actionText = 'Action: Select Delivery!';
-                        filterCategories.push('Offers', 'Active');
-                    } else {
-                        // We have a pickup schedule
-                        if (latestPickup.status === 'pending') {
-                            statusText = 'Schedule a Pick Up';
-                            stepNumber = '4/6 Step';
-                            actionText = 'Action: Schedule a Pick Up!';
-                            filterCategories.push('Scheduled', 'Active');
-                        } else if (latestPickup.status === 'confirmed') {
-                            if (latestPickup.payment_status === 'unpaid') {
-                                statusText = 'Payment Required';
-                                stepNumber = '5/6 Step';
-                                actionText = 'Action: Pay to confirm Deal!';
-                                filterCategories.push('Scheduled', 'Active');
-                            } else {
-                                statusText = 'Deal Pending';
-                                stepNumber = '5/6 Step';
-                                actionText = 'Action: Confirm the Deal!';
-                                filterCategories.push(type === 'buying' ? 'Bought' : 'Sold');
-                            }
-                        } else if (latestPickup.status === 'completed') {
-                            statusText = 'Deal Completed';
-                            stepNumber = '6/6 Step';
-                            actionText = 'Action: View Deal!';
-                            filterCategories.push(type === 'buying' ? 'Bought' : 'Sold', 'Finished');
-                        } else if (latestPickup.status === 'cancelled') {
-                            statusText = 'Schedule Cancelled';
-                            stepNumber = '4/6 Step';
-                            actionText = 'Action: Schedule a Pick Up!';
-                            filterCategories.push('Archived');
-                        }
-                    }
+                    statusText = 'Offer Accepted';
+                    actionText = 'Action: Offer was accepted';
                 }
+
+                const offerSortDate = latestOffer.created_at || conv.last_message_at;
+                actionItems.push({
+                    id: `${conv.conversation_id}-offer`,
+                    conversationId: conv.conversation_id,
+                    advertisementId: conv.advertisement_id,
+                    itemImage: getPrimaryImage(conv.advertisement_images),
+                    userAvatar: conv.userAvatar,
+                    itemTitle: conv.itemTitle,
+                    itemPrice: conv.itemPrice,
+                    username: conv.username || 'User',
+                    statusText,
+                    stepNumber: '2/6 Step',
+                    actionText,
+                    timestamp: formatTime(offerSortDate),
+                    sortDate: new Date(offerSortDate),
+                    filterCategories
+                });
             }
 
-            // Extract primary image
-            let itemImage = null;
-            try {
-                const images = JSON.parse(conv.advertisement_images);
-                if (images && images.length > 0) itemImage = images[0];
-            } catch (e) { }
+            // 3. Payment Notification
+            if (order) {
+                const paymentSortDate = order.created_at || conv.last_message_at;
+                actionItems.push({
+                    id: `${conv.conversation_id}-payment`,
+                    conversationId: conv.conversation_id,
+                    advertisementId: conv.advertisement_id,
+                    itemImage: getPrimaryImage(conv.advertisement_images),
+                    userAvatar: conv.userAvatar,
+                    itemTitle: conv.itemTitle,
+                    itemPrice: conv.itemPrice,
+                    username: conv.username || 'User',
+                    statusText: 'Payment Completed',
+                    stepNumber: '3/6 Step',
+                    actionText: 'Action: Paid!',
+                    timestamp: formatTime(paymentSortDate),
+                    sortDate: new Date(paymentSortDate),
+                    filterCategories: ['All', type === 'buying' ? 'Bought' : 'Sold']
+                });
 
-            return {
-                id: conv.conversation_id.toString(),
-                conversationId: conv.conversation_id,
-                advertisementId: conv.advertisement_id,
-                itemImage: itemImage,
-                userAvatar: conv.userAvatar,
-                itemTitle: conv.itemTitle,
-                itemPrice: conv.itemPrice,
-                username: conv.username || 'User',
-                statusText,
-                stepNumber,
-                actionText,
-                timestamp: formatTime(conv.last_message_at),
-                filterCategories
-            };
-        }));
+                // 4. Pickup Notification
+                const [pickups] = await promisePool.execute(
+                    'SELECT id, status, payment_status, created_at FROM pickup_schedules WHERE advertisement_id = ? AND status NOT IN ("cancelled") ORDER BY created_at DESC LIMIT 1',
+                    [conv.advertisement_id]
+                );
+                const latestPickup = pickups[0];
+
+                let deliveryOption = 'pickup';
+                try {
+                    const parsedNotes = JSON.parse(order.notes || '{}');
+                    if (parsedNotes.deliveryOption) {
+                        deliveryOption = parsedNotes.deliveryOption;
+                    }
+                } catch (e) {}
+
+                if (latestPickup || deliveryOption === 'pickup') {
+                    let statusText = 'Schedule a Pick Up';
+                    let actionText = 'Action: Schedule a Pick Up!';
+                    let filterCategories = ['All', 'Scheduled'];
+
+                    if (latestPickup) {
+                        if (latestPickup.status === 'confirmed') {
+                            statusText = 'Pick Up Confirmed';
+                            actionText = 'Action: Scheduled date!';
+                        } else if (latestPickup.status === 'completed') {
+                            statusText = 'Pick Up Completed';
+                            actionText = 'Action: Picked up!';
+                        } else {
+                            filterCategories.push('Active');
+                        }
+                    } else {
+                        filterCategories.push('Active');
+                    }
+
+                    const pickupSortDate = latestPickup?.created_at || order.created_at;
+                    actionItems.push({
+                        id: `${conv.conversation_id}-pickup`,
+                        conversationId: conv.conversation_id,
+                        advertisementId: conv.advertisement_id,
+                        itemImage: getPrimaryImage(conv.advertisement_images),
+                        userAvatar: conv.userAvatar,
+                        itemTitle: conv.itemTitle,
+                        itemPrice: conv.itemPrice,
+                        username: conv.username || 'User',
+                        statusText,
+                        stepNumber: '4/6 Step',
+                        actionText,
+                        timestamp: formatTime(pickupSortDate),
+                        sortDate: new Date(pickupSortDate),
+                        filterCategories
+                    });
+                }
+
+                // 5. Deal Confirmation Notification
+                const isConfirmed = order.buyer_confirmed === 1 && order.seller_confirmed === 1;
+                const confirmationSortDate = order.updated_at || order.created_at;
+                actionItems.push({
+                    id: `${conv.conversation_id}-confirmation`,
+                    conversationId: conv.conversation_id,
+                    advertisementId: conv.advertisement_id,
+                    itemImage: getPrimaryImage(conv.advertisement_images),
+                    userAvatar: conv.userAvatar,
+                    itemTitle: conv.itemTitle,
+                    itemPrice: conv.itemPrice,
+                    username: conv.username || 'User',
+                    statusText: isConfirmed ? 'Deal Confirmed' : 'Deal Pending',
+                    stepNumber: '5/6 Step',
+                    actionText: isConfirmed ? 'Action: Deal complete!' : 'Action: Confirm the Deal!',
+                    timestamp: formatTime(confirmationSortDate),
+                    sortDate: new Date(confirmationSortDate),
+                    filterCategories: ['All', type === 'buying' ? 'Bought' : 'Sold', !isConfirmed && 'Active'].filter(Boolean)
+                });
+
+                // 6. Give Feedback Notification
+                const [reviews] = await promisePool.execute(
+                    'SELECT id, created_at FROM reviews WHERE reviewer_id = ? AND order_id = ? LIMIT 1',
+                    [userId, order.id]
+                );
+                const feedbackGiven = reviews.length > 0;
+
+                if (feedbackGiven || isConfirmed) {
+                    const feedbackSortDate = reviews[0]?.created_at || order.updated_at;
+                    actionItems.push({
+                        id: `${conv.conversation_id}-feedback`,
+                        conversationId: conv.conversation_id,
+                        advertisementId: conv.advertisement_id,
+                        itemImage: getPrimaryImage(conv.advertisement_images),
+                        userAvatar: conv.userAvatar,
+                        itemTitle: conv.itemTitle,
+                        itemPrice: conv.itemPrice,
+                        username: conv.username || 'User',
+                        statusText: feedbackGiven ? 'Deal Completed' : 'Give Feedback',
+                        stepNumber: '6/6 Step',
+                        actionText: feedbackGiven ? 'Action: Feedback Left!' : 'Action: Leave Feedback!',
+                        timestamp: formatTime(feedbackSortDate),
+                        sortDate: new Date(feedbackSortDate),
+                        filterCategories: ['All', feedbackGiven ? 'Finished' : 'Active']
+                    });
+                }
+            }
+        }
+
+        // Sort action items by sortDate descending (newest/latest first)
+        actionItems.sort((a, b) => b.sortDate - a.sortDate);
+
+        // Remove sortDate from response to keep payload clean
+        const cleanedActionItems = actionItems.map(({ sortDate, ...rest }) => rest);
 
         res.json({
             success: true,
-            data: actionItems
+            data: cleanedActionItems
         });
     } catch (error) {
         console.error('getActionCenterMessages error:', error);

@@ -42,9 +42,9 @@ const getFilters = async (req, res) => {
       'SELECT id, name, slug FROM ad_genders WHERE is_active = TRUE ORDER BY sort_order'
     );
 
-    // Get sizes with gender_id
+    // Get sizes with gender_id and regional standard mappings
     const [sizes] = await promisePool.query(
-      'SELECT id, name, slug, gender_id FROM ad_sizes WHERE is_active = TRUE ORDER BY sort_order'
+      'SELECT id, name, slug, gender_id, us_size, uk_size, euro_size, intl_size, fr_size, it_size, jp_size, size_category FROM ad_sizes WHERE is_active = TRUE ORDER BY sort_order'
     );
 
     // Get colors
@@ -170,6 +170,7 @@ const createAdvertisement = async (req, res) => {
       display_duration_days,
       activity_id,
       condition_id,
+      quality,
       age_id,
       gender_id,
       size_id,
@@ -187,6 +188,24 @@ const createAdvertisement = async (req, res) => {
         message: 'Title, description, category, and price are required',
         error_code: 'VALIDATION_ERROR'
       });
+    }
+
+    // Check if listing a service (activity_id = 4 represents Services)
+    const isService = parseInt(activity_id) === 4;
+    if (isService) {
+      const [extensions] = await promisePool.query(
+        `SELECT id FROM user_social_club_extensions 
+         WHERE user_id = ? AND extension_type = 'service_listings' AND expires_at > NOW() 
+         LIMIT 1`,
+        [userId]
+      );
+      if (extensions.length === 0) {
+        return res.status(403).json({
+          success: false,
+          message: 'Active Service Listings extension is required to list a service.',
+          error_code: 'EXTENSION_REQUIRED'
+        });
+      }
     }
 
     // Determine locations to use
@@ -263,9 +282,9 @@ const createAdvertisement = async (req, res) => {
     const [result] = await promisePool.query(
       `INSERT INTO advertisements
        (user_id, title, description, images, category_id, subcategory_id, location_id,
-        price, display_duration_days, activity_id, condition_id, age_id, gender_id,
+        price, display_duration_days, activity_id, condition_id, quality, age_id, gender_id,
         size_id, color_id, dim_length, dim_width, dim_height, dim_unit, status, start_date, end_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         title,
@@ -278,6 +297,7 @@ const createAdvertisement = async (req, res) => {
         display_duration_days || 60,
         activity_id || null,
         condition_id || null,
+        quality || null,
         age_id || null,
         gender_id || null,
         size_id || null,
@@ -373,7 +393,7 @@ const createAdvertisement = async (req, res) => {
               ul.name as location_name, ul.city, ul.country,
               act.name as activity_name, cond.name as condition_name,
               ag.name as age_name, gend.name as gender_name,
-              sz.name as size_name, col.name as color_name, col.hex_code
+              sz.name as size_name, sz.us_size, sz.uk_size, sz.euro_size, sz.intl_size, sz.fr_size, sz.it_size, sz.jp_size, sz.size_category, col.name as color_name, col.hex_code
        FROM advertisements a
        LEFT JOIN categories c ON a.category_id = c.id
        LEFT JOIN categories sc ON a.subcategory_id = sc.id
@@ -440,6 +460,7 @@ const updateAdvertisement = async (req, res) => {
       display_duration_days,
       activity_id,
       condition_id,
+      quality,
       age_id,
       gender_id,
       size_id,
@@ -472,6 +493,26 @@ const updateAdvertisement = async (req, res) => {
         success: false,
         message: 'Cannot modify advertisement with current status'
       });
+    }
+
+    // Check if updating/changing to a service listing (activity_id = 4 represents Services)
+    if (activity_id !== undefined) {
+      const isService = parseInt(activity_id) === 4;
+      if (isService) {
+        const [extensions] = await promisePool.query(
+          `SELECT id FROM user_social_club_extensions 
+           WHERE user_id = ? AND extension_type = 'service_listings' AND expires_at > NOW() 
+           LIMIT 1`,
+          [userId]
+        );
+        if (extensions.length === 0) {
+          return res.status(403).json({
+            success: false,
+            message: 'Active Service Listings extension is required to list a service.',
+            error_code: 'EXTENSION_REQUIRED'
+          });
+        }
+      }
     }
 
     // Determine target location IDs if provided
@@ -566,6 +607,10 @@ const updateAdvertisement = async (req, res) => {
       updates.push('condition_id = ?');
       params.push(condition_id);
     }
+    if (quality !== undefined) {
+      updates.push('quality = ?');
+      params.push(quality);
+    }
     if (age_id !== undefined) {
       updates.push('age_id = ?');
       params.push(age_id);
@@ -641,7 +686,7 @@ const updateAdvertisement = async (req, res) => {
               ul.name as location_name, ul.city, ul.country,
               act.name as activity_name, cond.name as condition_name,
               ag.name as age_name, gend.name as gender_name,
-              sz.name as size_name, col.name as color_name, col.hex_code
+              sz.name as size_name, sz.us_size, sz.uk_size, sz.euro_size, sz.intl_size, sz.fr_size, sz.it_size, sz.jp_size, sz.size_category, col.name as color_name, col.hex_code
        FROM advertisements a
        LEFT JOIN categories c ON a.category_id = c.id
        LEFT JOIN categories sc ON a.subcategory_id = sc.id
@@ -713,7 +758,7 @@ const getUserAdvertisements = async (req, res) => {
               ul.name as location_name, ul.city, ul.country,
               act.name as activity_name, cond.name as condition_name,
               ag.name as age_name, gend.name as gender_name,
-              sz.name as size_name, col.name as color_name, col.hex_code
+              sz.name as size_name, sz.us_size, sz.uk_size, sz.euro_size, sz.intl_size, sz.fr_size, sz.it_size, sz.jp_size, sz.size_category, col.name as color_name, col.hex_code
        FROM advertisements a
        LEFT JOIN categories c ON a.category_id = c.id
        LEFT JOIN categories sc ON a.subcategory_id = sc.id
@@ -822,7 +867,7 @@ const getAdvertisement = async (req, res) => {
               ul.name as location_name, ul.city, ul.country,
               act.name as activity_name, cond.name as condition_name,
               ag.name as age_name, gend.name as gender_name,
-              sz.name as size_name, col.name as color_name, col.hex_code
+              sz.name as size_name, sz.us_size, sz.uk_size, sz.euro_size, sz.intl_size, sz.fr_size, sz.it_size, sz.jp_size, sz.size_category, col.name as color_name, col.hex_code
        FROM advertisements a
        LEFT JOIN categories c ON a.category_id = c.id
        LEFT JOIN categories sc ON a.subcategory_id = sc.id
@@ -947,32 +992,64 @@ const browseAdvertisements = async (req, res) => {
       subcategory_id,
       activity_id,
       condition_id,
+      quality,
       min_price,
       max_price,
       latitude,
       longitude,
       user_id,
+      gender_id,
+      age_id,
+      size_id,
+      color_id,
       radius = 50, // km
       sort = 'created_at',
       order = 'DESC',
       page = 1,
-      limit = 100
+      limit = 100,
+      promoted_only,
+      badge_level_filter,
     } = req.query;
+
+    const isPromotedOnly = promoted_only === 'true' || promoted_only === true;
 
     // Base WHERE clause
     let whereClause = `WHERE a.status = "published"`;
     let whereParams = [];
     let selectParams = [];
 
-    // Exclude ads that are ONLY in showcases (to prevent duplicates) from the main list
-    whereClause += ` AND a.id NOT IN (
-        SELECT DISTINCT advertisement_id 
-        FROM product_badges 
-        WHERE badge_type = 'visibility' 
-        AND badge_level = 'show_casing' 
-        AND showcase_group_id IS NOT NULL
+    if (badge_level_filter) {
+      // Show ONLY ads that have an active badge of the requested level
+      whereClause += ` AND a.id IN (
+        SELECT DISTINCT advertisement_id
+        FROM product_badges
+        WHERE badge_type = 'visibility'
+        AND badge_level = ?
         AND is_active = TRUE
+        AND (expiry_date IS NULL OR expiry_date > NOW())
       )`;
+      whereParams.push(badge_level_filter);
+    } else if (isPromotedOnly) {
+      // Show ONLY ads that have an active ShowCasing or GarageSales badge
+      whereClause += ` AND a.id IN (
+        SELECT DISTINCT advertisement_id
+        FROM product_badges
+        WHERE badge_type = 'visibility'
+        AND badge_level IN ('show_casing', 'garage_sales')
+        AND is_active = TRUE
+        AND (expiry_date IS NULL OR expiry_date > NOW())
+      )`;
+    } else {
+      // Exclude ads that are ONLY in showcases (to prevent duplicates) from the main list
+      whereClause += ` AND a.id NOT IN (
+          SELECT DISTINCT advertisement_id
+          FROM product_badges
+          WHERE badge_type = 'visibility'
+          AND badge_level = 'show_casing'
+          AND showcase_group_id IS NOT NULL
+          AND is_active = TRUE
+        )`;
+    }
 
     // Search query
     if (search) {
@@ -1026,6 +1103,41 @@ const browseAdvertisements = async (req, res) => {
     if (conditionQuery) {
       whereClause += conditionQuery.clause;
       whereParams.push(conditionQuery.params[0]);
+    }
+
+    // Quality filter (high / medium / low)
+    const qualityQuery = buildInClause('a.quality', quality);
+    if (qualityQuery) {
+      whereClause += qualityQuery.clause;
+      whereParams.push(qualityQuery.params[0]);
+    }
+
+    // Gender filter
+    const genderQuery = buildInClause('a.gender_id', gender_id);
+    if (genderQuery) {
+      whereClause += genderQuery.clause;
+      whereParams.push(genderQuery.params[0]);
+    }
+
+    // Age filter
+    const ageQuery = buildInClause('a.age_id', age_id);
+    if (ageQuery) {
+      whereClause += ageQuery.clause;
+      whereParams.push(ageQuery.params[0]);
+    }
+
+    // Size filter
+    const sizeQuery = buildInClause('a.size_id', size_id);
+    if (sizeQuery) {
+      whereClause += sizeQuery.clause;
+      whereParams.push(sizeQuery.params[0]);
+    }
+
+    // Color filter
+    const colorQuery = buildInClause('a.color_id', color_id);
+    if (colorQuery) {
+      whereClause += colorQuery.clause;
+      whereParams.push(colorQuery.params[0]);
     }
 
     // Price range filter
@@ -1082,7 +1194,7 @@ const browseAdvertisements = async (req, res) => {
              MAX(ul.country) as country,
              act.name as activity_name, cond.name as condition_name,
              ag.name as age_name, gend.name as gender_name,
-             sz.name as size_name, col.name as color_name, col.hex_code,
+             sz.name as size_name, sz.us_size, sz.uk_size, sz.euro_size, sz.intl_size, sz.fr_size, sz.it_size, sz.jp_size, sz.size_category, col.name as color_name, col.hex_code,
              u.full_name as seller_name, u.id as seller_id,
              COALESCE(MAX(pb.max_priority), 0) as badge_priority,
              (SELECT COUNT(*) FROM favorites WHERE advertisement_id = a.id AND user_id = ?) > 0 as is_favorite
@@ -1628,164 +1740,101 @@ async function fetchActiveBannerAds() {
  */
 async function assembleProductListing(ads, showcases, homemarkets, banners, trendingGalleries = []) {
   try {
-    console.log('\n🔍 DEBUG: Starting assembleProductListing');
-    console.log(`📊 Input: ${ads.length} ads, ${showcases.length} showcases, ${homemarkets.length} homemarkets, ${banners.length} banners, ${trendingGalleries.length} trending`);
-
     const seenAdIds = new Set();
 
-    // 1. Separate promotions from standard listings
-    const promotionBadgeLevels = ['rise_to_top', 'top_spot', 'fast', 'targeted'];
+    // Order: 1. ShowCasing  2. Boosted  3. Standard/Normal  4. Trending Galleries
 
-    let promotions = ads.filter(ad =>
-      ad.badges && ad.badges.some(b =>
-        b.type === 'visibility' &&
-        promotionBadgeLevels.includes(b.level)
-      )
-    );
-
-    // Filter out duplicates from promotions (unlikely but safe)
-    promotions = promotions.filter(ad => {
-      if (seenAdIds.has(ad.id)) return false;
-      seenAdIds.add(ad.id);
-      return true;
-    });
-
-    // 2. Filter Trending Galleries
-    const processedTrending = trendingGalleries.map(gallery => {
-      const uniqueProducts = gallery.products.filter(p => !seenAdIds.has(p.id));
-      uniqueProducts.forEach(p => seenAdIds.add(p.id));
-      return { ...gallery, products: uniqueProducts };
-    }).filter(g => g.products.length >= 4);
-
-    // 3. Filter Showcases
+    // 1. Showcases
     const processedShowcases = showcases.map(sc => {
       const uniqueProducts = sc.products.filter(p => !seenAdIds.has(p.id));
       uniqueProducts.forEach(p => seenAdIds.add(p.id));
       return { ...sc, products: uniqueProducts };
     }).filter(sc => sc.products.length >= 4);
 
-    // 4. Filter HomeMarkets
+    // 2. Boosted (rise_to_top, top_spot)
+    const promotionBadgeLevels = ['rise_to_top', 'top_spot', 'fast', 'targeted'];
+    const promotions = ads.filter(ad =>
+      !seenAdIds.has(ad.id) &&
+      ad.badges && ad.badges.some(b => b.type === 'visibility' && promotionBadgeLevels.includes(b.level))
+    );
+    promotions.forEach(ad => seenAdIds.add(ad.id));
+
+    // 3. HomeMarkets
     const processedHomeMarkets = homemarkets.map(hm => {
       const uniqueProducts = hm.products.filter(p => !seenAdIds.has(p.id));
       uniqueProducts.forEach(p => seenAdIds.add(p.id));
       return { ...hm, products: uniqueProducts };
     }).filter(hm => hm.products.length >= 2);
 
-    // 5. Standard Listings (Remaining ads not in promotions/showcases/etc)
+    // 4. Standard listings
     const standard = ads.filter(ad => !seenAdIds.has(ad.id));
     standard.forEach(ad => seenAdIds.add(ad.id));
 
-    console.log(`\n📊 De-duplicated: ${promotions.length} promotions, ${processedTrending.length} trending, ${processedShowcases.length} showcases, ${processedHomeMarkets.length} homemarkets, ${standard.length} standard`);
+    // 5. Trending Galleries
+    const processedTrending = trendingGalleries.map(gallery => {
+      const uniqueProducts = gallery.products.filter(p => !seenAdIds.has(p.id));
+      uniqueProducts.forEach(p => seenAdIds.add(p.id));
+      return { ...gallery, products: uniqueProducts };
+    }).filter(g => g.products.length >= 4);
 
-    // 6. Build result array
     const result = [];
-
-    // Step 1: Add promotions section at the very top
-    if (promotions.length > 0) {
-      result.push({ type: 'section_header', title: 'PROMOTIONS' });
-      result.push({ type: 'horizontal_line' });
-      result.push({
-        type: 'promotions',
-        products: promotions
-      });
-      result.push({ type: 'horizontal_line' });
-    }
-
-    let showcaseIndex = 0;
-    let homemarketsInjected = false;
-    let bannerIndex = 0;
-
-    // Step 2: Add first showcase immediately after promotions
-    if (processedShowcases.length > 0) {
-      result.push({ type: 'section_header', title: 'SHOWCASING' });
-      result.push({ type: 'horizontal_line' });
-      result.push(processedShowcases[showcaseIndex++]);
-      result.push({ type: 'horizontal_line' });
-
-      // Inject banner after first showcase if available
-      if (bannerIndex < banners.length) {
-        result.push(banners[bannerIndex++]);
-      }
-    }
-
-    // Step 3: Inject standard listings with pattern
-    let standardIndex = 0;
-    let batchCount = 0;
     const PRODUCTS_PER_BATCH = 6;
 
-    while (standardIndex < standard.length) {
-      // Create a batch of standard products
-      const batchSize = Math.min(PRODUCTS_PER_BATCH, standard.length - standardIndex);
-      const batch = standard.slice(standardIndex, standardIndex + batchSize);
-      standardIndex += batchSize;
+    // ── Section 1: Promotions (Top Spot / Rise to Top) ────────────────────
+    // These must appear FIRST so boosted items are always visible at the top.
+    if (promotions.length > 0) {
+      result.push({ type: 'promotions', products: promotions });
+    }
 
-      result.push({
-        type: 'standard',
-        products: batch
+    // ── Section 2: ShowCasing carousels ───────────────────────────────────
+    if (processedShowcases.length > 0) {
+      processedShowcases.forEach(sc => {
+        result.push(sc);
       });
-      batchCount++;
+    }
 
-      // Check if we should inject content
-      let injectedContent = false;
-      if (batchCount >= 1) {
-        // Inject Trending sections after the first batch
-        if (batchCount === 1 && processedTrending.length > 0) {
-          injectedContent = true;
-          processedTrending.forEach(gallery => {
-            result.push({ type: 'section_header', title: gallery.title });
-            result.push({ type: 'horizontal_line' });
-            result.push(gallery);
-            result.push({ type: 'horizontal_line' });
-          });
-        }
+    // ── Section 3: Home Market carousels ──────────────────────────────────
+    if (processedHomeMarkets.length > 0) {
+      processedHomeMarkets.forEach(hm => {
+        result.push(hm);
+      });
+    }
 
-        // Inject Showcases or HomeMarkets or Banners
-        if (showcaseIndex < processedShowcases.length && batchCount % 2 === 0) {
-          injectedContent = true;
-          result.push({ type: 'section_header', title: 'SHOWCASING' });
-          result.push({ type: 'horizontal_line' });
-          result.push(processedShowcases[showcaseIndex++]);
-          result.push({ type: 'horizontal_line' });
-        } else if (!homemarketsInjected && processedHomeMarkets.length > 0 && batchCount % 3 === 0) {
-          injectedContent = true;
-          result.push({ type: 'section_header', title: 'HOME MARKET' });
-          result.push({ type: 'horizontal_line' });
-          processedHomeMarkets.forEach(hm => {
-            result.push(hm);
-          });
-          result.push({ type: 'horizontal_line' });
-          homemarketsInjected = true;
-          patternStep = 0; // Switch preference
-        } else {
-          // No Showcases or HomeMarkets left (or none available)
-          // Just inject a banner if available
-          if (bannerIndex < banners.length) {
-            console.log(`  📌 Injecting BANNER independently after batch ${batchCount}`);
-            result.push(banners[bannerIndex++]);
-            result.push({ type: 'horizontal_line' });
-            injectedContent = true;
-          }
-        }
+    // ── Section 4: Standard (Recommended) listings — grid batches ─────────
+    // Always push at least one standard item so the section header always
+    // appears in the feed, even when all products are claimed by specials.
+    let bannerIndex = 0;
+    let batchCount = 0;
+    let standardIndex = 0;
 
-        if (injectedContent) {
-          batchCount = 0; // Reset batch count only if we injected something
+    if (standard.length === 0) {
+      // Always show the section — frontend renders empty-state placeholder
+      result.push({ type: 'standard', products: [] });
+    } else {
+      while (standardIndex < standard.length) {
+        const batchSize = Math.min(PRODUCTS_PER_BATCH, standard.length - standardIndex);
+        result.push({ type: 'standard', products: standard.slice(standardIndex, standardIndex + batchSize) });
+        standardIndex += batchSize;
+        batchCount++;
+
+        if (bannerIndex < banners.length && batchCount % 4 === 0) {
+          result.push(banners[bannerIndex++]);
         }
       }
     }
 
-    console.log(`\n✅ Assembled ${result.length} total items:`);
-    console.log(`   - ${promotions.length} promotions`);
-    console.log(`   - ${standard.length} standard ads`);
-    console.log(`   - ${showcaseIndex} showcases`);
-    console.log(`   - ${homemarkets.length} homemarket users in 1 group`);
-    console.log(`   - ${bannerIndex} banners`);
-    console.log(`   - ${result.filter(r => r.type === 'horizontal_line').length} horizontal lines`);
-    console.log(`   - ${result.filter(r => r.type === 'section_header').length} section headers\n`);
+    // ── Section 5: Trending Galleries — always at the bottom ──────────────
+    if (processedTrending.length > 0) {
+      processedTrending.forEach(gallery => {
+        result.push(gallery);
+      });
+    }
+
     return result;
 
   } catch (error) {
     console.error('Error assembling product listing:', error);
-    return ads; // Return original ads if assembly fails
+    return ads;
   }
 }
 
@@ -1849,7 +1898,7 @@ const getAdvertisementPublicView = async (req, res) => {
              ul.latitude, ul.longitude,
              act.name as activity_name, cond.name as condition_name,
              ag.name as age_name, gend.name as gender_name,
-             sz.name as size_name, col.name as color_name, col.hex_code,
+             sz.name as size_name, sz.us_size, sz.uk_size, sz.euro_size, sz.intl_size, sz.fr_size, sz.it_size, sz.jp_size, sz.size_category, col.name as color_name, col.hex_code,
              u.id as seller_id, u.full_name as seller_name, u.avatar as seller_avatar,
              u.created_at as seller_member_since, u.username,
              sp.name as seller_plan_name, sp.slug as seller_plan_slug, 
@@ -2046,6 +2095,342 @@ const syncAdvertisementBadges = async (req, res) => {
   }
 };
 
+/**
+ * Purchase an extension (display locations, social clubs, or boosts)
+ * POST /api/v1/mobile-app/advertisements/purchase-extension
+ */
+const purchaseExtension = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const {
+      payment_method_id,   // Stripe pm_xxx  (new card flow)
+      saved_card_id,       // DB row id from saved_payment_methods (saved card flow)
+      save_card = false,
+      type,
+      plan = {},
+      distance = null,
+      ad_id = null,
+      amount,
+      currency = 'GBP',
+      // QuickFind specific fields
+      category: qfCategory,
+      condition: qfCondition,
+      keywords: qfKeywords,
+      distance_km: qfDistanceKm,
+    } = req.body;
+
+    const finalPlan = { ...plan };
+    if (!finalPlan.items && req.body.items) {
+      finalPlan.items = req.body.items;
+    }
+    if (!finalPlan.planType && req.body.planType) {
+      finalPlan.planType = req.body.planType;
+    }
+    if (!finalPlan.duration_months && req.body.duration_months) {
+      finalPlan.duration_months = req.body.duration_months;
+    }
+    if (!finalPlan.name && req.body.planType) {
+      finalPlan.name = req.body.planType;
+    }
+
+    if (!payment_method_id && !saved_card_id) {
+      return res.status(400).json({ success: false, message: 'payment_method_id or saved_card_id is required' });
+    }
+
+    const totalAmount = parseFloat(amount);
+    if (isNaN(totalAmount) || totalAmount < 0) {
+      return res.status(400).json({ success: false, message: 'Invalid amount' });
+    }
+
+    // Load user — stripe_customer_id lives on users table in this project
+    const [users] = await promisePool.query(
+      'SELECT id, email, full_name, stripe_customer_id FROM users WHERE id = ?',
+      [userId]
+    );
+    if (!users.length) return res.status(404).json({ success: false, message: 'User not found' });
+    const user = users[0];
+
+    let paymentIntentId = null;
+    let cardLastFour    = null;
+
+    if (totalAmount > 0) {
+      // Resolve Stripe key — check settings table then env fallback
+      const [keyRows] = await promisePool.query(
+        "SELECT setting_value FROM settings WHERE setting_key = 'stripe_secret_key' LIMIT 1"
+      );
+      const stripeKey = (keyRows[0]?.setting_value || process.env.STRIPE_SECRET_KEY || '').trim();
+      if (!stripeKey || stripeKey.includes('your_') || stripeKey.length < 20) {
+        return res.status(500).json({ success: false, message: 'Stripe is not configured on this server' });
+      }
+      const stripe = require('stripe')(stripeKey);
+
+      // Get or create Stripe customer (stored on users.stripe_customer_id)
+      let stripeCustomerId = user.stripe_customer_id || null;
+      if (!stripeCustomerId) {
+        const customer = await stripe.customers.create({
+          email:    user.email,
+          name:     user.full_name,
+          metadata: { user_id: String(userId) },
+        });
+        stripeCustomerId = customer.id;
+        await promisePool.query(
+          'UPDATE users SET stripe_customer_id = ? WHERE id = ?',
+          [stripeCustomerId, userId]
+        );
+      }
+
+      // Resolve the real Stripe pm_ id
+      let stripePmId = payment_method_id || null;
+      if (saved_card_id) {
+        const [pmRows] = await promisePool.query(
+          'SELECT provider_payment_method_id, last_four FROM saved_payment_methods WHERE id = ? AND user_id = ? AND is_active = TRUE',
+          [saved_card_id, userId]
+        );
+        if (!pmRows.length) {
+          return res.status(400).json({ success: false, message: 'Saved card not found' });
+        }
+        stripePmId   = pmRows[0].provider_payment_method_id;
+        cardLastFour = pmRows[0].last_four;
+      }
+
+      // Attach payment method to customer (ignore if already attached)
+      try {
+        await stripe.paymentMethods.attach(stripePmId, { customer: stripeCustomerId });
+      } catch (_) {}
+
+      const piParams = {
+        amount:         Math.round(totalAmount * 100),
+        currency:       currency.toLowerCase(),
+        customer:       stripeCustomerId,
+        payment_method: stripePmId,
+        confirm:        true,
+        automatic_payment_methods: { enabled: true, allow_redirects: 'never' },
+        metadata: {
+          user_id:        String(userId),
+          extension_type: type || 'extension',
+          ad_id:          String(ad_id || ''),
+        },
+      };
+
+      if (save_card) piParams.setup_future_usage = 'off_session';
+
+      const paymentIntent = await stripe.paymentIntents.create(piParams);
+
+      if (paymentIntent.status !== 'succeeded') {
+        return res.status(400).json({ success: false, message: 'Payment did not succeed', payment_status: paymentIntent.status });
+      }
+
+      paymentIntentId = paymentIntent.id;
+
+      // Retrieve last4 for the receipt (only if not already set from saved card)
+      if (!cardLastFour) {
+        try {
+          const pm = await stripe.paymentMethods.retrieve(stripePmId);
+          cardLastFour = pm.card?.last4 || null;
+        } catch (_) {}
+      }
+    }
+
+    // Record the extension purchase (best-effort — table may not exist yet)
+    try {
+      await promisePool.query(
+        `INSERT INTO user_extension_purchases
+          (user_id, extension_type, plan_name, amount, currency, ad_id, payment_intent_id, payment_method_id, save_card, status, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'completed', NOW())`,
+        [
+          userId,
+          type || 'unknown',
+          finalPlan.name || finalPlan.duration_label || '',
+          totalAmount,
+          currency,
+          ad_id,
+          paymentIntentId,
+          payment_method_id,
+          save_card ? 1 : 0,
+        ]
+      );
+    } catch (_) {
+      // Table doesn't exist yet — payment already succeeded, continue gracefully
+    }
+
+    // For quickfind type: store the request in quickfind_requests table
+    if (type === 'quickfind' && qfCategory) {
+      try {
+        // Get buyer's default location to store proximity data
+        const [locRows] = await promisePool.query(
+          'SELECT latitude, longitude FROM user_locations WHERE user_id = ? AND is_default = TRUE LIMIT 1',
+          [userId]
+        );
+        const loc = locRows[0] || {};
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 7); // QuickFind valid for 7 days
+
+        await promisePool.query(
+          `INSERT INTO quickfind_requests
+             (user_id, category, keywords, condition_type, distance_km, latitude, longitude, amount, payment_intent_id, expires_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [userId, qfCategory, qfKeywords || null, qfCondition || null, qfDistanceKm || 5,
+           loc.latitude || null, loc.longitude || null, totalAmount, paymentIntentId, expiresAt]
+        );
+      } catch (_) {
+        // Table may not exist yet — payment already succeeded, continue gracefully
+      }
+    }
+
+    // For social_extension type: record each item in user_social_club_extensions
+    if (type === 'social_extension' && finalPlan.items && Array.isArray(finalPlan.items)) {
+      const expiresAt = new Date();
+      expiresAt.setMonth(expiresAt.getMonth() + 6);
+      for (const extType of finalPlan.items) {
+        try {
+          await promisePool.query(
+            `INSERT INTO user_social_club_extensions
+               (user_id, extension_type, expires_at, amount_paid, stripe_pi_id)
+             VALUES (?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE expires_at = VALUES(expires_at), amount_paid = VALUES(amount_paid)`,
+            [userId, extType, expiresAt, totalAmount / finalPlan.items.length, paymentIntentId]
+          );
+        } catch (_) {}
+      }
+    }
+
+    res.json({
+      success: true,
+      message: 'Extension purchased successfully',
+      data: {
+        extension_type: type,
+        total: totalAmount,
+        currency,
+        payment_intent_id: paymentIntentId,
+        card_last4: cardLastFour,
+      },
+    });
+  } catch (error) {
+    console.error('Purchase extension error:', error);
+    const statusCode = error.type === 'StripeCardError' ? 402 : 500;
+    res.status(statusCode).json({
+      success: false,
+      message: error.message || 'Error processing extension purchase',
+    });
+  }
+};
+
+/**
+ * Smart search suggestions (autocomplete)
+ * GET /api/v1/mobile-app/advertisements/search-suggestions
+ */
+const getSearchSuggestions = async (req, res) => {
+  try {
+    const { q = '' } = req.query;
+    const query = q.trim();
+
+    let suggestions = [];
+
+    if (query.length === 0) {
+      // No query — return trending products with images
+      const [trending] = await promisePool.query(
+        `SELECT id, title AS text, price, 'GBP' AS currency,
+                JSON_UNQUOTE(JSON_EXTRACT(images, '$[0]')) AS image,
+                'product' AS type, views_count
+         FROM advertisements
+         WHERE status = 'published' AND title IS NOT NULL AND title != ''
+           AND images IS NOT NULL AND JSON_LENGTH(images) > 0
+         ORDER BY views_count DESC, created_at DESC
+         LIMIT 8`
+      );
+      suggestions = trending;
+    } else {
+      // Category name matches
+      const [categories] = await promisePool.query(
+        `SELECT name AS text, 'category' AS type, id AS category_id
+         FROM categories
+         WHERE name LIKE ? AND is_active = TRUE
+         ORDER BY sort_order
+         LIMIT 3`,
+        [`%${query}%`]
+      );
+
+      // Matching products with images and price
+      const [products] = await promisePool.query(
+        `SELECT id, title AS text, price, 'GBP' AS currency,
+                JSON_UNQUOTE(JSON_EXTRACT(images, '$[0]')) AS image,
+                'product' AS type, views_count
+         FROM advertisements
+         WHERE status = 'published' AND title LIKE ?
+         ORDER BY views_count DESC, created_at DESC
+         LIMIT 6`,
+        [`%${query}%`]
+      );
+
+      suggestions = [...categories, ...products];
+    }
+
+    res.json({ success: true, data: { suggestions } });
+  } catch (error) {
+    console.error('Search suggestions error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching suggestions' });
+  }
+};
+
+/**
+ * Get active QuickFind requests (buyer "wanted" posts) near a location
+ * GET /api/v1/mobile-app/advertisements/quickfinds
+ */
+const getQuickFindRequests = async (req, res) => {
+  try {
+    const { latitude, longitude, radius = 200 } = req.query;
+
+    let query, params;
+
+    if (latitude && longitude) {
+      query = `
+        SELECT * FROM (
+          SELECT qf.id, qf.user_id, qf.category, qf.keywords, qf.condition_type,
+                 qf.distance_km, qf.latitude, qf.longitude, qf.status,
+                 qf.expires_at, qf.created_at,
+                 u.full_name AS buyer_name, u.avatar AS buyer_avatar,
+                 (6371 * acos(
+                   cos(radians(?)) * cos(radians(qf.latitude)) *
+                   cos(radians(qf.longitude) - radians(?)) +
+                   sin(radians(?)) * sin(radians(qf.latitude))
+                 )) AS distance_from_user
+          FROM quickfind_requests qf
+          JOIN users u ON qf.user_id = u.id
+          WHERE qf.status = 'active'
+            AND qf.expires_at > NOW()
+            AND qf.latitude IS NOT NULL
+            AND qf.longitude IS NOT NULL
+        ) AS subq
+        WHERE subq.distance_from_user <= ?
+        ORDER BY subq.created_at DESC
+        LIMIT 50
+      `;
+      params = [parseFloat(latitude), parseFloat(longitude), parseFloat(latitude), parseFloat(radius)];
+    } else {
+      query = `
+        SELECT qf.id, qf.user_id, qf.category, qf.keywords, qf.condition_type,
+               qf.distance_km, qf.latitude, qf.longitude, qf.status,
+               qf.expires_at, qf.created_at,
+               u.full_name AS buyer_name, u.avatar AS buyer_avatar
+        FROM quickfind_requests qf
+        JOIN users u ON qf.user_id = u.id
+        WHERE qf.status = 'active'
+          AND qf.expires_at > NOW()
+        ORDER BY qf.created_at DESC
+        LIMIT 50
+      `;
+      params = [];
+    }
+
+    const [quickfinds] = await promisePool.query(query, params);
+
+    res.json({ success: true, data: { quickfinds } });
+  } catch (error) {
+    console.error('Get quickfind requests error:', error);
+    res.status(500).json({ success: false, message: 'Error fetching QuickFind requests', error: error.message });
+  }
+};
+
 module.exports = {
   getFilters,
   getUserLocations,
@@ -2058,5 +2443,8 @@ module.exports = {
   getFeaturedAdvertisements,
   getAdvertisementPublicView,
   getAdvertisementPlans,
-  syncAdvertisementBadges
+  syncAdvertisementBadges,
+  purchaseExtension,
+  getQuickFindRequests,
+  getSearchSuggestions,
 };

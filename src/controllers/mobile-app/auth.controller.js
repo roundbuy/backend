@@ -15,100 +15,92 @@ const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
  */
 const register = async (req, res) => {
   try {
-    const { full_name, email, password, language = 'en' } = req.body;
+    const {
+      full_name, email, password, language = 'en',
+      username, account_type, company_name, vat_number, business_address,
+    } = req.body;
 
-    // Validate input
     if (!email || !password || !full_name) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email, password, and full name are required'
-      });
+      return res.status(400).json({ success: false, message: 'Email, password, and full name are required' });
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return res.status(400).json({
-        success: false,
-        message: 'Invalid email format'
-      });
+      return res.status(400).json({ success: false, message: 'Invalid email format' });
     }
 
-    // Validate password strength
     if (password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 8 characters long'
-      });
+      return res.status(400).json({ success: false, message: 'Password must be at least 8 characters long' });
     }
 
-    // Check if user already exists
     const [existingUsers] = await promisePool.query(
-      'SELECT id FROM users WHERE email = ?',
-      [email]
+      'SELECT id FROM users WHERE email = ? OR (username IS NOT NULL AND username = ?)',
+      [email, username || null]
     );
 
     if (existingUsers.length > 0) {
-      return res.status(400).json({
-        success: false,
-        message: 'Email already registered'
-      });
+      return res.status(400).json({ success: false, message: 'Email or username already registered' });
     }
 
-    // Hash password
     const password_hash = await bcrypt.hash(password, 10);
 
-    // Generate email verification token
-    // Use "1234" in development mode for easy testing
     const verification_token = process.env.NODE_ENV === 'development'
       ? '1234'
       : crypto.randomBytes(32).toString('hex');
-    const verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const verification_expires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-    // Create user (not verified yet, no subscription)
+    const user_type = account_type === 'business' ? 'business' : 'private';
+
     const [result] = await promisePool.query(
-      `INSERT INTO users (email, password_hash, full_name, language_preference, is_verified, verification_token, verification_expires)
-       VALUES (?, ?, ?, ?, FALSE, ?, ?)`,
-      [email, password_hash, full_name, language, verification_token, verification_expires]
+      `INSERT INTO users
+         (email, username, password_hash, full_name, language_preference,
+          user_type, company_name, vat_number, business_address,
+          is_verified, verification_token, verification_expires)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, FALSE, ?, ?)`,
+      [
+        email, username || null, password_hash, full_name, language,
+        user_type, company_name || null, vat_number || null, business_address || null,
+        verification_token, verification_expires,
+      ]
     );
 
     const userId = result.insertId;
 
-    // Send verification email (only if SMTP is configured)
     if (process.env.SMTP_USER && process.env.SMTP_PASSWORD) {
       try {
-        console.log(`📧 SMTP configured. Attempting to send verification email to ${email}...`);
-        // await sendVerificationEmail(email, full_name, verification_token);
-        console.log(`✅ Verification email sent to ${email}`);
+        await sendVerificationEmail(email, full_name, verification_token);
       } catch (emailError) {
         console.error('⚠️ Failed to send verification email:', emailError.message);
-        // Continue with registration even if email fails
       }
     } else {
-      console.log('ℹ️ SMTP not configured (check .env). Skipping email sending.');
-      console.log(`📧 Development Mode - Verification code for ${email}: ${verification_token}`);
+      console.log(`📧 Dev verification code for ${email}: ${verification_token}`);
     }
+
+    // Issue tokens immediately so business users can upload KYB docs before email verification
+    const { access_token, refresh_token } = generateTokens(userId, 'subscriber');
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully. Please check your email for verification.',
+      message: 'Account created! Please check your email for a verification code.',
       data: {
         user: {
           id: userId,
           email,
+          username: username || null,
           full_name,
-          is_verified: false
+          user_type,
+          company_name: company_name || null,
+          is_verified: false,
+          role: 'subscriber',
         },
-        verification_sent: !!(process.env.SMTP_USER && process.env.SMTP_PASSWORD)
-      }
+        access_token,
+        refresh_token,
+        verification_sent: !!(process.env.SMTP_USER && process.env.SMTP_PASSWORD),
+      },
     });
   } catch (error) {
     console.error('Mobile register error:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Error registering user',
-      error: error.message
-    });
+    res.status(500).json({ success: false, message: 'Error registering user', error: error.message });
   }
 };
 
@@ -160,7 +152,8 @@ const verifyEmail = async (req, res) => {
     // Get user with subscription plan details (like login)
     const [updatedUsers] = await promisePool.query(
       `SELECT u.id, u.email, u.username, u.avatar, u.password_hash, u.full_name, u.role, u.is_active, u.is_verified, u.language_preference,
-              u.subscription_plan_id, u.subscription_start_date, u.subscription_end_date, u.last_username_change, u.referral_code,
+              u.user_type, u.subscription_plan_id, u.subscription_start_date, u.subscription_end_date, u.last_username_change, u.referral_code,
+              u.kyc_status, u.kyc_completed, u.kyc_required,
               sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
        FROM users u
        LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
@@ -194,6 +187,7 @@ const verifyEmail = async (req, res) => {
           avatar: updatedUser.avatar,
           full_name: updatedUser.full_name,
           role: updatedUser.role,
+          user_type: updatedUser.user_type,
           language_preference: updatedUser.language_preference,
           is_verified: updatedUser.is_verified,
           has_active_subscription: hasSubscription,
@@ -204,7 +198,10 @@ const verifyEmail = async (req, res) => {
           subscription_start_date: updatedUser.subscription_start_date,
           subscription_end_date: updatedUser.subscription_end_date,
           last_username_change: updatedUser.last_username_change,
-          referral_code: updatedUser.referral_code
+          referral_code: updatedUser.referral_code,
+          kyc_status: updatedUser.kyc_status,
+          kyc_completed: updatedUser.kyc_completed,
+          kyc_required: updatedUser.kyc_required
         },
         ...tokens
       }
@@ -321,7 +318,8 @@ const login = async (req, res) => {
     // Get user with subscription plan details
     const [users] = await promisePool.query(
       `SELECT u.id, u.email, u.username, u.avatar, u.password_hash, u.full_name, u.role, u.is_active, u.is_verified, u.language_preference,
-              u.subscription_plan_id, u.subscription_start_date, u.subscription_end_date, u.last_username_change, u.referral_code,
+              u.user_type, u.subscription_plan_id, u.subscription_start_date, u.subscription_end_date, u.last_username_change, u.referral_code,
+              u.kyc_status, u.kyc_completed, u.kyc_required,
               sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
        FROM users u
        LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
@@ -359,25 +357,23 @@ const login = async (req, res) => {
       });
     }
 
-    // Check if user has subscription
+    // Verify password
+    const match = await bcrypt.compare(password, user.password_hash);
+    if (!match) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid email or password'
+      });
+    }
+
+    // Check subscription
     const [subscriptions] = await promisePool.query(
       `SELECT id FROM user_subscriptions
        WHERE user_id = ? AND status = 'active' AND end_date > NOW()
        LIMIT 1`,
       [user.id]
     );
-
     const hasSubscription = subscriptions.length > 0;
-
-    // Verify password
-    const isValidPassword = await bcrypt.compare(password, user.password_hash);
-
-    if (!isValidPassword) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid email or password'
-      });
-    }
 
     // Update last login
     await promisePool.query(
@@ -402,6 +398,7 @@ const login = async (req, res) => {
             avatar: user.avatar,
             full_name: user.full_name,
             role: user.role,
+            user_type: user.user_type,
             language_preference: user.language_preference,
             is_verified: user.is_verified,
             has_active_subscription: false,
@@ -412,7 +409,10 @@ const login = async (req, res) => {
             subscription_start_date: user.subscription_start_date,
             subscription_end_date: user.subscription_end_date,
             last_username_change: user.last_username_change,
-            referral_code: user.referral_code
+            referral_code: user.referral_code,
+            kyc_status: user.kyc_status,
+            kyc_completed: user.kyc_completed,
+            kyc_required: user.kyc_required
           },
           ...tokens,
           requires_subscription: true
@@ -431,6 +431,7 @@ const login = async (req, res) => {
           avatar: user.avatar,
           full_name: user.full_name,
           role: user.role,
+          user_type: user.user_type,
           language_preference: user.language_preference,
           is_verified: user.is_verified,
           has_active_subscription: hasSubscription,
@@ -441,7 +442,10 @@ const login = async (req, res) => {
           subscription_start_date: user.subscription_start_date,
           subscription_end_date: user.subscription_end_date,
           last_username_change: user.last_username_change,
-          referral_code: user.referral_code
+          referral_code: user.referral_code,
+          kyc_status: user.kyc_status,
+          kyc_completed: user.kyc_completed,
+          kyc_required: user.kyc_required
         },
         ...tokens,
         requires_subscription: !hasSubscription
@@ -813,6 +817,7 @@ const appleLogin = async (req, res) => {
           avatar: user.avatar,
           full_name: user.full_name,
           role: user.role,
+          user_type: user.user_type,
           is_verified: true,
           has_active_subscription: hasSubscription,
           requires_subscription: !hasSubscription,
@@ -820,7 +825,10 @@ const appleLogin = async (req, res) => {
           subscription_plan_slug: user.subscription_plan_slug,
           subscription_plan_name: user.subscription_plan_name,
           subscription_start_date: user.subscription_start_date,
-          subscription_end_date: user.subscription_end_date
+          subscription_end_date: user.subscription_end_date,
+          kyc_status: user.kyc_status,
+          kyc_completed: user.kyc_completed,
+          kyc_required: user.kyc_required
         },
         ...tokens,
         requires_subscription: !hasSubscription
@@ -954,6 +962,7 @@ const googleLogin = async (req, res) => {
           avatar: user.avatar,
           full_name: user.full_name,
           role: user.role,
+          user_type: user.user_type,
           is_verified: true,
           has_active_subscription: hasSubscription,
           requires_subscription: !hasSubscription,
@@ -961,7 +970,10 @@ const googleLogin = async (req, res) => {
           subscription_plan_slug: user.subscription_plan_slug,
           subscription_plan_name: user.subscription_plan_name,
           subscription_start_date: user.subscription_start_date,
-          subscription_end_date: user.subscription_end_date
+          subscription_end_date: user.subscription_end_date,
+          kyc_status: user.kyc_status,
+          kyc_completed: user.kyc_completed,
+          kyc_required: user.kyc_required
         },
         ...tokens,
         requires_subscription: !hasSubscription
@@ -1067,6 +1079,7 @@ const instagramLogin = async (req, res) => {
           avatar: user.avatar,
           full_name: user.full_name,
           role: user.role,
+          user_type: user.user_type,
           is_verified: true,
           has_active_subscription: hasSubscription,
           requires_subscription: !hasSubscription,
@@ -1074,7 +1087,10 @@ const instagramLogin = async (req, res) => {
           subscription_plan_slug: user.subscription_plan_slug,
           subscription_plan_name: user.subscription_plan_name,
           subscription_start_date: user.subscription_start_date,
-          subscription_end_date: user.subscription_end_date
+          subscription_end_date: user.subscription_end_date,
+          kyc_status: user.kyc_status,
+          kyc_completed: user.kyc_completed,
+          kyc_required: user.kyc_required
         },
         ...tokens,
         requires_subscription: !hasSubscription

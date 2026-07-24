@@ -57,6 +57,24 @@ router.get('/browse', authenticate, checkSubscription, mobileAdvertisementContro
 router.get('/featured', authenticate, checkSubscription, mobileAdvertisementController.getFeaturedAdvertisements);
 
 /**
+ * @route GET /api/v1/mobile-app/advertisements/quickfinds
+ * @desc Get active QuickFind "wanted" requests near a location
+ * @access Private (requires authentication)
+ * @query {number} latitude - Centre latitude (optional)
+ * @query {number} longitude - Centre longitude (optional)
+ * @query {number} radius - Search radius in km (default 200)
+ */
+router.get('/quickfinds', authenticate, mobileAdvertisementController.getQuickFindRequests);
+
+/**
+ * @route GET /api/v1/mobile-app/advertisements/search-suggestions
+ * @desc Smart search autocomplete — returns categories, matching titles, trending
+ * @access Private (requires authentication)
+ * @query {string} q - Search query (empty = trending)
+ */
+router.get('/search-suggestions', authenticate, mobileAdvertisementController.getSearchSuggestions);
+
+/**
  * @route GET /api/v1/mobile-app/advertisements/view/:id
  * @desc Get advertisement details for public viewing (increments view count)
  * @access Private (requires authentication and subscription)
@@ -137,8 +155,22 @@ router.delete('/:id', authenticate, checkSubscription, mobileAdvertisementContro
  * @route POST /api/v1/mobile-app/advertisements/sync-badges
  * @desc Sync membership badges for all user's published advertisements
  * @access Private (requires authentication)
- * @description This endpoint ensures all user's published ads have the correct membership badge based on their current subscription plan
  */
 router.post('/sync-badges', authenticate, mobileAdvertisementController.syncAdvertisementBadges);
+
+/**
+ * @route POST /api/v1/mobile-app/advertisements/purchase-extension
+ * @desc Purchase a display-location, social-club, or visibility extension via Stripe
+ * @access Private (requires authentication)
+ * @body {string} payment_method_id - Stripe payment method ID (pm_...)
+ * @body {boolean} save_card - Save payment method for future use
+ * @body {string} type - Extension type (display_location | social_extension | visibility_boost)
+ * @body {object} plan - Plan details from the client
+ * @body {object} distance - Distance boost details (optional)
+ * @body {number} ad_id - Advertisement ID (optional, for boost purchases)
+ * @body {string} amount - Total amount to charge
+ * @body {string} currency - Currency code (default GBP)
+ */
+router.post('/purchase-extension', authenticate, mobileAdvertisementController.purchaseExtension);
 
 module.exports = router;

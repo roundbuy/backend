@@ -155,7 +155,7 @@ exports.processOrder = async (req, res) => {
         let adTitle;
         let finalAdvertisementId = advertisementId;
 
-        if (conversationId && conversationId.startsWith('event-')) {
+        if (conversationId && typeof conversationId === 'string' && conversationId.startsWith('event-')) {
             const eventItemId = conversationId.split('-')[1];
             const [eventItems] = await connection.query(
                 "SELECT uploaded_by, title, advertisement_id FROM event_items WHERE id = ?",
@@ -190,26 +190,35 @@ exports.processOrder = async (req, res) => {
 
         // 1. Handle Wallet Payment
         if (paymentMethod === 'wallet') {
-            // Check balance
-            const [walletResult] = await connection.query(
-                `SELECT COALESCE(SUM(CASE WHEN transaction_type = 'credit' THEN amount ELSE 0 END) - 
-                         SUM(CASE WHEN transaction_type = 'debit' THEN amount ELSE 0 END), 0) as balance 
-                 FROM wallet_transactions 
-                 WHERE user_id = ? AND status = 'completed'`,
+            // Fetch wallet and lock it for update
+            const [wallets] = await connection.query(
+                'SELECT * FROM user_wallets WHERE user_id = ? FOR UPDATE',
                 [userId]
             );
-            const balance = walletResult[0].balance || 0;
+            if (!wallets.length) {
+                throw new Error('User wallet not found');
+            }
+            const wallet = wallets[0];
+            const balance = parseFloat(wallet.balance || 0);
 
             if (balance < amount) {
                 throw new Error('Insufficient wallet balance');
             }
 
-            // Deduct Wallet
+            const balanceAfter = balance - amount;
+
+            // Update wallet balance
+            await connection.query(
+                'UPDATE user_wallets SET balance = ? WHERE id = ?',
+                [balanceAfter, wallet.id]
+            );
+
+            // Deduct Wallet (create transaction record)
             await connection.query(
                 `INSERT INTO wallet_transactions 
-                 (user_id, transaction_type, amount, balance_before, balance_after, category, status, description)
-                 VALUES (?, 'debit', ?, ?, ?, 'payment', 'completed', ?)`,
-                [userId, amount, balance, balance - amount, 'Payment for Order: ' + adTitle]
+                 (wallet_id, user_id, transaction_type, amount, balance_before, balance_after, category, status, description)
+                 VALUES (?, ?, 'debit', ?, ?, ?, 'payment', 'completed', ?)`,
+                [wallet.id, userId, amount, balance, balanceAfter, 'Payment for Order: ' + adTitle]
             );
         }
 

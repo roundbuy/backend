@@ -17,7 +17,11 @@ const {
   updateUserProfile,
   setCountryPreference,
   dismissKycReminder,
-  detectCountry
+  detectCountry,
+  getInterests,
+  saveInterests,
+  getSocialClubExtensionStatus,
+  activateSocialClubGift,
 } = require('../../controllers/mobile-app/user.controller');
 
 /**
@@ -127,5 +131,34 @@ router.post('/check-username', checkUsernameAvailability);
  * @access Private
  */
 router.put('/username', authenticate, updateUsername);
+
+/**
+ * @route GET /api/v1/mobile-app/user/interests
+ * @desc Get user's saved interest preferences
+ * @access Private
+ */
+router.get('/interests', authenticate, getInterests);
+
+/**
+ * @route PUT /api/v1/mobile-app/user/interests
+ * @desc Save user's interest preferences
+ * @access Private
+ */
+router.put('/interests', authenticate, saveInterests);
+
+/**
+ * @route GET /api/v1/mobile-app/user/extensions/social-clubs/status
+ * @desc Get user's active social club / events / garage-sales extensions
+ * @access Private
+ */
+router.get('/extensions/social-clubs/status', authenticate, getSocialClubExtensionStatus);
+
+/**
+ * @route POST /api/v1/mobile-app/user/extensions/social-clubs/gift
+ * @desc Activate free first garage-sales gift extension
+ * @access Private
+ * @body {string} extension_type - 'social_clubs' | 'events' | 'garage_sales'
+ */
+router.post('/extensions/social-clubs/gift', authenticate, activateSocialClubGift);
 
 module.exports = router;

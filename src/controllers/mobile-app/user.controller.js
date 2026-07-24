@@ -1,4 +1,5 @@
 const { promisePool } = require('../../config/database');
+const { autoDetectUserCountry } = require('../../utils/countryDetector');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
@@ -145,14 +146,27 @@ const updateProfileImage = async (req, res) => {
 const getUserProfile = async (req, res) => {
     try {
         const userId = req.user.id;
+        const clientIp = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
+        // 1. Fetch detection fields first
+        const [detectionData] = await promisePool.query(
+            'SELECT preferred_country, country_auto_detected, last_country_detection_at FROM users WHERE id = ?',
+            [userId]
+        );
+
+        if (detectionData.length > 0) {
+            await autoDetectUserCountry(userId, clientIp, detectionData[0]);
+        }
+
+        // 2. Fetch full profile (will reflect any auto-detection changes)
         const [users] = await promisePool.query(
             `SELECT id, email, full_name, phone, avatar, country_code, 
                created_at, updated_at, last_username_change, username, referral_code,
                measurement_unit, lottery_credits,
                cumulative_earnings, kyc_required, kyc_completed, kyc_remind_after,
-               preferred_country, preferred_currency
-        FROM users WHERE id = ?`,
+               preferred_country, preferred_currency, user_type, kyc_status,
+               country_auto_detected, last_country_detection_at
+         FROM users WHERE id = ?`,
             [userId]
         );
 
@@ -853,7 +867,7 @@ const setCountryPreference = async (req, res) => {
         }
 
         await promisePool.query(
-            `UPDATE users SET preferred_country = ?, preferred_currency = ?, updated_at = NOW() WHERE id = ?`,
+            `UPDATE users SET preferred_country = ?, preferred_currency = ?, country_auto_detected = 0, last_country_detection_at = NOW(), updated_at = NOW() WHERE id = ?`,
             [country, currency || 'GBP', userId]
         );
 
@@ -950,6 +964,166 @@ const detectCountry = (req, res) => {
     }
 };
 
+// ─── User Interests ──────────────────────────────────────────────────────────
+
+const getInterests = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [rows] = await promisePool.query(
+            'SELECT * FROM user_interests WHERE user_id = ? LIMIT 1',
+            [userId]
+        );
+        const interests = rows[0] || {};
+        // Parse JSON columns that MySQL returns as strings
+        ['category_ids', 'subcategory_ids', 'colour_ids', 'brand_names'].forEach((col) => {
+            if (interests[col] && typeof interests[col] === 'string') {
+                try { interests[col] = JSON.parse(interests[col]); } catch { interests[col] = []; }
+            }
+        });
+        return res.json({ success: true, data: interests });
+    } catch (err) {
+        if (err.code === 'ER_NO_SUCH_TABLE' || err.code === 'ER_BAD_FIELD_ERROR') {
+            // Table or column not yet migrated — return empty interests
+            return res.json({ success: true, data: {} });
+        }
+        console.error('getInterests error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to fetch interests' });
+    }
+};
+
+const saveInterests = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const {
+            category_ids = [],
+            subcategory_ids = [],
+            colour_ids = [],
+            shirt_size,
+            jacket_size,
+            trouser_waist,
+            trouser_length,
+            shoe_size_uk,
+            size_system = 'UK',
+            quality_preference = 'any',
+            brand_names = [],
+        } = req.body;
+
+        const validSystems = ['UK', 'US', 'EU'];
+        const normalizedSystem = validSystems.includes(size_system) ? size_system : 'UK';
+
+        await promisePool.query(
+            `INSERT INTO user_interests
+               (user_id, category_ids, subcategory_ids, colour_ids, shirt_size, jacket_size,
+                trouser_waist, trouser_length, shoe_size_uk, size_system, quality_preference, brand_names)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             ON DUPLICATE KEY UPDATE
+               category_ids = VALUES(category_ids),
+               subcategory_ids = VALUES(subcategory_ids),
+               colour_ids = VALUES(colour_ids),
+               shirt_size = VALUES(shirt_size),
+               jacket_size = VALUES(jacket_size),
+               trouser_waist = VALUES(trouser_waist),
+               trouser_length = VALUES(trouser_length),
+               shoe_size_uk = VALUES(shoe_size_uk),
+               size_system = VALUES(size_system),
+               quality_preference = VALUES(quality_preference),
+               brand_names = VALUES(brand_names)`,
+            [
+                userId,
+                JSON.stringify(category_ids),
+                JSON.stringify(subcategory_ids),
+                JSON.stringify(colour_ids),
+                shirt_size || null,
+                jacket_size || null,
+                trouser_waist || null,
+                trouser_length || null,
+                shoe_size_uk || null,
+                normalizedSystem,
+                quality_preference,
+                JSON.stringify(brand_names),
+            ]
+        );
+
+        return res.json({ success: true, message: 'Interests saved' });
+    } catch (err) {
+        if (err.code === 'ER_NO_SUCH_TABLE' || err.code === 'ER_BAD_FIELD_ERROR') {
+            return res.status(503).json({
+                success: false,
+                message: 'Database not yet migrated. Run: npm run migrate:pending',
+            });
+        }
+        console.error('saveInterests error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to save interests' });
+    }
+};
+
+// ─── Social Club Extensions ──────────────────────────────────────────────────
+
+const getSocialClubExtensionStatus = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const [rows] = await promisePool.query(
+            `SELECT extension_type, expires_at, is_gift
+             FROM user_social_club_extensions
+             WHERE user_id = ? AND expires_at > NOW()
+             ORDER BY expires_at DESC`,
+            [userId]
+        );
+
+        const status = {};
+        rows.forEach((row) => {
+            const key = `${row.extension_type}_active`;
+            status[key] = true;
+            status[`${row.extension_type}_expires_at`] = row.expires_at;
+        });
+
+        return res.json({ success: true, data: status });
+    } catch (err) {
+        // Table may not exist yet — return empty status rather than crashing
+        if (err.code === 'ER_NO_SUCH_TABLE') {
+            return res.json({ success: true, data: {} });
+        }
+        console.error('getSocialClubExtensionStatus error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to fetch extension status' });
+    }
+};
+
+const activateSocialClubGift = async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const { extension_type } = req.body;
+
+        const valid = ['social_clubs', 'events', 'garage_sales'];
+        if (!valid.includes(extension_type)) {
+            return res.status(400).json({ success: false, message: 'Invalid extension type' });
+        }
+
+        // Garage sales first activation is free; block double-gift
+        const [existing] = await promisePool.query(
+            'SELECT id FROM user_social_club_extensions WHERE user_id = ? AND extension_type = ? LIMIT 1',
+            [userId, extension_type]
+        );
+        if (existing.length > 0) {
+            return res.status(409).json({ success: false, message: 'Extension already activated' });
+        }
+
+        const expiresAt = new Date();
+        expiresAt.setMonth(expiresAt.getMonth() + 6);
+
+        await promisePool.query(
+            `INSERT INTO user_social_club_extensions
+               (user_id, extension_type, expires_at, amount_paid, is_gift)
+             VALUES (?, ?, ?, 0.00, 1)`,
+            [userId, extension_type, expiresAt]
+        );
+
+        return res.json({ success: true, message: 'Gift extension activated', data: { expires_at: expiresAt } });
+    } catch (err) {
+        console.error('activateSocialClubGift error:', err);
+        return res.status(500).json({ success: false, message: 'Failed to activate gift' });
+    }
+};
+
 module.exports = {
     updateProfileImage,
     getUserProfile,
@@ -965,5 +1139,9 @@ module.exports = {
     getUserMetrics,
     setCountryPreference,
     dismissKycReminder,
-    detectCountry
+    detectCountry,
+    getInterests,
+    saveInterests,
+    getSocialClubExtensionStatus,
+    activateSocialClubGift,
 };

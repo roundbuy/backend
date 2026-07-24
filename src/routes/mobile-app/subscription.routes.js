@@ -93,4 +93,34 @@ router.get('/stripe-config', mobileSubscriptionController.getStripeConfig);
  */
 router.get('/current', authenticate, mobileSubscriptionController.getCurrentSubscription);
 
+/**
+ * @route POST /api/v1/mobile-app/subscription/create-setup-intent
+ * @desc Create a Stripe SetupIntent for saving a card with off-session mandate
+ * @access Private (requires authentication)
+ */
+router.post('/create-setup-intent', authenticate, mobileSubscriptionController.createSetupIntent);
+
+/**
+ * @route POST /api/v1/mobile-app/subscription/save-payment-method
+ * @desc Save a confirmed payment method (after SetupIntent confirmation)
+ * @access Private (requires authentication)
+ * @body {string} payment_method_id - Stripe PM ID (pm_...)
+ * @body {boolean} set_as_default - Make this the default card
+ */
+router.post('/save-payment-method', authenticate, mobileSubscriptionController.savePaymentMethod);
+
+/**
+ * @route DELETE /api/v1/mobile-app/subscription/payment-methods/:id
+ * @desc Remove a saved payment method
+ * @access Private (requires authentication)
+ */
+router.delete('/payment-methods/:id', authenticate, mobileSubscriptionController.removePaymentMethod);
+
+/**
+ * @route PUT /api/v1/mobile-app/subscription/payment-methods/:id/default
+ * @desc Set a payment method as default
+ * @access Private (requires authentication)
+ */
+router.put('/payment-methods/:id/default', authenticate, mobileSubscriptionController.setDefaultPaymentMethod);
+
 module.exports = router;
