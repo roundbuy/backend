@@ -117,16 +117,11 @@ const uploadImages = async (req, res) => {
         }
       }
 
-      // Get base URL from request
-      const protocol = req.protocol;
-      const host = req.get('host');
-      const baseUrl = `${protocol}://${host}`;
-
-      // Generate full URLs for uploaded images
-      const imageUrls = req.files.map(file => {
-        // Return full URL that can be accessed directly
-        return `${baseUrl}/uploads/${file.filename}`;
-      });
+      // Store relative paths — deriving an absolute URL from req.protocol/host
+      // breaks whenever the request reaches the app through a reverse proxy
+      // that doesn't forward the public host (it bakes in e.g. localhost:5001).
+      // Clients resolve these against their configured API base URL.
+      const imageUrls = req.files.map(file => `/uploads/${file.filename}`);
 
       res.status(201).json({
         success: true,
@@ -139,7 +134,7 @@ const uploadImages = async (req, res) => {
             originalName: file.originalname,
             size: file.size,
             mimetype: file.mimetype,
-            url: `${baseUrl}/uploads/${file.filename}`
+            url: `/uploads/${file.filename}`
           }))
         }
       });

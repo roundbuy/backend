@@ -82,13 +82,11 @@ const updateProfileImage = async (req, res) => {
                 });
             }
 
-            // Get base URL from request
-            const protocol = req.protocol;
-            const host = req.get('host');
-            const baseUrl = `${protocol}://${host}`;
-
-            // Generate full URL for uploaded image
-            const imageUrl = `${baseUrl}/uploads/profiles/${req.file.filename}`;
+            // Store a relative path — deriving an absolute URL from
+            // req.protocol/host breaks behind a reverse proxy that doesn't
+            // forward the public host. Clients resolve this against their
+            // configured API base URL.
+            const imageUrl = `/uploads/profiles/${req.file.filename}`;
 
             // Get user's current profile image to delete old one
             const [users] = await promisePool.query(
