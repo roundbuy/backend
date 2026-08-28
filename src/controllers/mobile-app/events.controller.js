@@ -38,7 +38,7 @@ exports.getAllEvents = async (req, res) => {
         query += ` ORDER BY start_time ASC LIMIT ? OFFSET ?`;
         params.push(parseInt(limit), parseInt(offset));
 
-        const [events] = await promisePool.execute(query, params);
+        const [events] = await promisePool.query(query, params);
 
         // Fetch counts
         let countQuery = `SELECT COUNT(*) as total FROM events WHERE status != 'cancelled'`;
@@ -47,7 +47,7 @@ exports.getAllEvents = async (req, res) => {
             countQuery += ` AND status = ?`;
             countParams.push(status);
         }
-        const [countResult] = await promisePool.execute(countQuery, countParams);
+        const [countResult] = await promisePool.query(countQuery, countParams);
         const total = countResult[0].total;
 
         // If user is authenticated, check their subscriptions and follows
@@ -55,11 +55,11 @@ exports.getAllEvents = async (req, res) => {
             const eventIds = events.map(e => e.id);
             const placeholders = eventIds.map(() => '?').join(',');
             
-            const [subs] = await promisePool.execute(
+            const [subs] = await promisePool.query(
                 `SELECT event_id FROM event_subscriptions WHERE user_id = ? AND event_id IN (${placeholders})`,
                 [userId, ...eventIds]
             );
-            const [follows] = await promisePool.execute(
+            const [follows] = await promisePool.query(
                 `SELECT event_id FROM event_followers WHERE user_id = ? AND event_id IN (${placeholders})`,
                 [userId, ...eventIds]
             );
@@ -87,7 +87,7 @@ exports.getAllEvents = async (req, res) => {
         });
     } catch (error) {
         console.error('Error fetching events:', error);
-        res.status(500).json({ success: false, message: 'Server error' });
+        res.status(500).json({ success: false, message: 'Server error', error: error.message });
     }
 };
 
@@ -99,7 +99,7 @@ exports.getEventById = async (req, res) => {
         const { id } = req.params;
         const userId = req.user?.id;
 
-        const [events] = await promisePool.execute(
+        const [events] = await promisePool.query(
             `SELECT * FROM events WHERE id = ?`,
             [id]
         );
@@ -111,8 +111,8 @@ exports.getEventById = async (req, res) => {
         const event = events[0];
 
         if (userId) {
-            const [subs] = await promisePool.execute(`SELECT id FROM event_subscriptions WHERE user_id = ? AND event_id = ?`, [userId, id]);
-            const [follows] = await promisePool.execute(`SELECT id FROM event_followers WHERE user_id = ? AND event_id = ?`, [userId, id]);
+            const [subs] = await promisePool.query(`SELECT id FROM event_subscriptions WHERE user_id = ? AND event_id = ?`, [userId, id]);
+            const [follows] = await promisePool.query(`SELECT id FROM event_followers WHERE user_id = ? AND event_id = ?`, [userId, id]);
             
             event.is_subscribed = subs.length > 0;
             event.is_followed = follows.length > 0;
@@ -133,7 +133,7 @@ exports.subscribeToEvent = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const [events] = await promisePool.execute('SELECT status, max_participants, subscriber_count FROM events WHERE id = ?', [id]);
+        const [events] = await promisePool.query('SELECT status, max_participants, subscriber_count FROM events WHERE id = ?', [id]);
         if (!events.length) return res.status(404).json({ success: false, message: 'Event not found' });
         
         const event = events[0];
@@ -145,13 +145,13 @@ exports.subscribeToEvent = async (req, res) => {
             return res.status(400).json({ success: false, message: 'Event is full' });
         }
 
-        const [existing] = await promisePool.execute('SELECT id FROM event_subscriptions WHERE user_id = ? AND event_id = ?', [userId, id]);
+        const [existing] = await promisePool.query('SELECT id FROM event_subscriptions WHERE user_id = ? AND event_id = ?', [userId, id]);
         if (existing.length > 0) {
             return res.status(400).json({ success: false, message: 'Already subscribed' });
         }
 
-        await promisePool.execute('INSERT INTO event_subscriptions (user_id, event_id) VALUES (?, ?)', [userId, id]);
-        await promisePool.execute('UPDATE events SET subscriber_count = subscriber_count + 1 WHERE id = ?', [id]);
+        await promisePool.query('INSERT INTO event_subscriptions (user_id, event_id) VALUES (?, ?)', [userId, id]);
+        await promisePool.query('UPDATE events SET subscriber_count = subscriber_count + 1 WHERE id = ?', [id]);
 
         res.json({ success: true, message: 'Subscribed successfully' });
     } catch (error) {
@@ -168,10 +168,10 @@ exports.unsubscribeFromEvent = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const [result] = await promisePool.execute('DELETE FROM event_subscriptions WHERE user_id = ? AND event_id = ?', [userId, id]);
+        const [result] = await promisePool.query('DELETE FROM event_subscriptions WHERE user_id = ? AND event_id = ?', [userId, id]);
         
         if (result.affectedRows > 0) {
-            await promisePool.execute('UPDATE events SET subscriber_count = GREATEST(0, subscriber_count - 1) WHERE id = ?', [id]);
+            await promisePool.query('UPDATE events SET subscriber_count = GREATEST(0, subscriber_count - 1) WHERE id = ?', [id]);
         }
 
         res.json({ success: true, message: 'Unsubscribed successfully' });
@@ -189,13 +189,13 @@ exports.followEvent = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const [existing] = await promisePool.execute('SELECT id FROM event_followers WHERE user_id = ? AND event_id = ?', [userId, id]);
+        const [existing] = await promisePool.query('SELECT id FROM event_followers WHERE user_id = ? AND event_id = ?', [userId, id]);
         if (existing.length > 0) {
             return res.status(400).json({ success: false, message: 'Already following' });
         }
 
-        await promisePool.execute('INSERT INTO event_followers (user_id, event_id) VALUES (?, ?)', [userId, id]);
-        await promisePool.execute('UPDATE events SET follower_count = follower_count + 1 WHERE id = ?', [id]);
+        await promisePool.query('INSERT INTO event_followers (user_id, event_id) VALUES (?, ?)', [userId, id]);
+        await promisePool.query('UPDATE events SET follower_count = follower_count + 1 WHERE id = ?', [id]);
 
         res.json({ success: true, message: 'Followed successfully' });
     } catch (error) {
@@ -212,10 +212,10 @@ exports.unfollowEvent = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const [result] = await promisePool.execute('DELETE FROM event_followers WHERE user_id = ? AND event_id = ?', [userId, id]);
+        const [result] = await promisePool.query('DELETE FROM event_followers WHERE user_id = ? AND event_id = ?', [userId, id]);
         
         if (result.affectedRows > 0) {
-            await promisePool.execute('UPDATE events SET follower_count = GREATEST(0, follower_count - 1) WHERE id = ?', [id]);
+            await promisePool.query('UPDATE events SET follower_count = GREATEST(0, follower_count - 1) WHERE id = ?', [id]);
         }
 
         res.json({ success: true, message: 'Unfollowed successfully' });
@@ -233,7 +233,7 @@ exports.joinLiveRoom = async (req, res) => {
         const { id } = req.params;
         const userId = req.user.id;
 
-        const [events] = await promisePool.execute(
+        const [events] = await promisePool.query(
             'SELECT status, entry_fee, start_time, end_time FROM events WHERE id = ?',
             [id]
         );
@@ -255,7 +255,7 @@ exports.joinLiveRoom = async (req, res) => {
 
         // Auto-promote status to 'live' if within window but not yet marked
         if (withinWindow && event.status !== 'live') {
-            await promisePool.execute(
+            await promisePool.query(
                 `UPDATE events SET status = 'live', updated_at = NOW() WHERE id = ?`,
                 [id]
             );
@@ -263,27 +263,27 @@ exports.joinLiveRoom = async (req, res) => {
 
         // Logic for entry_fee check would go here if entry_fee > 0
 
-        const [existing] = await promisePool.execute(
+        const [existing] = await promisePool.query(
             'SELECT id, is_active FROM event_room_participants WHERE user_id = ? AND event_id = ?',
             [userId, id]
         );
         if (existing.length > 0) {
             if (!existing[0].is_active) {
-                await promisePool.execute(
+                await promisePool.query(
                     'UPDATE event_room_participants SET is_active = 1, joined_at = NOW() WHERE id = ?',
                     [existing[0].id]
                 );
-                await promisePool.execute(
+                await promisePool.query(
                     'UPDATE events SET live_participant_count = live_participant_count + 1 WHERE id = ?',
                     [id]
                 );
             }
         } else {
-            await promisePool.execute(
+            await promisePool.query(
                 'INSERT INTO event_room_participants (user_id, event_id, is_active) VALUES (?, ?, 1)',
                 [userId, id]
             );
-            await promisePool.execute(
+            await promisePool.query(
                 'UPDATE events SET live_participant_count = live_participant_count + 1 WHERE id = ?',
                 [id]
             );
@@ -303,7 +303,7 @@ exports.getLiveParticipants = async (req, res) => {
     try {
         const { id } = req.params;
         
-        const [participants] = await promisePool.execute(`
+        const [participants] = await promisePool.query(`
             SELECT u.id, u.full_name, u.avatar 
             FROM event_room_participants erp
             JOIN users u ON erp.user_id = u.id
@@ -331,7 +331,7 @@ exports.createEvent = async (req, res) => {
             chat_enabled, entry_fee, occurrence_day_1
         } = req.body;
 
-        const [result] = await promisePool.execute(`
+        const [result] = await promisePool.query(`
             INSERT INTO events (
                 title, heading, description, start_time, end_time, 
                 category_tag, max_participants, allow_bidding, chat_enabled, 
@@ -362,10 +362,10 @@ exports.updateEvent = async (req, res) => {
             chat_enabled, entry_fee, status 
         } = req.body;
 
-        const [currentEventRows] = await promisePool.execute('SELECT status, title FROM events WHERE id = ?', [id]);
+        const [currentEventRows] = await promisePool.query('SELECT status, title FROM events WHERE id = ?', [id]);
         const currentEvent = currentEventRows[0];
 
-        await promisePool.execute(`
+        await promisePool.query(`
             UPDATE events SET 
                 title = ?, heading = ?, description = ?, start_time = ?, end_time = ?, 
                 category_tag = ?, max_participants = ?, allow_bidding = ?, 
@@ -380,7 +380,7 @@ exports.updateEvent = async (req, res) => {
         if (status === 'live' && currentEvent.status !== 'live') {
             try {
                 // Get all users who follow or subscribed
-                const [followers] = await promisePool.execute(`
+                const [followers] = await promisePool.query(`
                     SELECT user_id FROM event_followers WHERE event_id = ?
                     UNION
                     SELECT user_id FROM event_subscriptions WHERE event_id = ?
@@ -419,7 +419,7 @@ exports.updateEvent = async (req, res) => {
 exports.deleteEvent = async (req, res) => {
     try {
         const { id } = req.params;
-        await promisePool.execute(`UPDATE events SET status = 'cancelled', updated_at = NOW() WHERE id = ?`, [id]);
+        await promisePool.query(`UPDATE events SET status = 'cancelled', updated_at = NOW() WHERE id = ?`, [id]);
         res.json({ success: true, message: 'Event cancelled successfully' });
     } catch (error) {
         console.error('Error deleting event:', error);

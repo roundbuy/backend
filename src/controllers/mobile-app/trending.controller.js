@@ -6,7 +6,7 @@ const { promisePool } = require('../../config/database');
  */
 exports.getGalleries = async (req, res) => {
     try {
-        const [galleries] = await promisePool.execute(`
+        const [galleries] = await promisePool.query(`
             SELECT * FROM trending_galleries 
             WHERE is_active = 1 
             ORDER BY sort_order ASC, created_at DESC
@@ -26,7 +26,7 @@ exports.getGalleries = async (req, res) => {
 exports.getGalleryItems = async (req, res) => {
     try {
         const { id } = req.params;
-        const [items] = await promisePool.execute(`
+        const [items] = await promisePool.query(`
             SELECT a.*, tgi.is_featured, tgi.sort_order as gallery_sort
             FROM trending_gallery_items tgi
             JOIN advertisements a ON tgi.advertisement_id = a.id
@@ -81,7 +81,7 @@ exports.getTrendingFeed = async (req, res) => {
         query += ` ORDER BY trending_score DESC, views_count DESC LIMIT ?`;
         params.push(parseInt(limit));
 
-        const [items] = await promisePool.execute(query, params);
+        const [items] = await promisePool.query(query, params);
 
         const processedItems = items.map(item => {
             if (item.images && typeof item.images === 'string') {
