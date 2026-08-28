@@ -31,7 +31,7 @@ const getConversations = async (req, res) => {
             : '';
 
         // Get conversations with details
-        const [conversations] = await promisePool.execute(`
+        const [conversations] = await promisePool.query(`
       SELECT
         c.id,
         c.advertisement_id,
@@ -61,7 +61,7 @@ const getConversations = async (req, res) => {
     `, [...queryParams, limit, offset]);
 
         // Get total count
-        const [countResult] = await promisePool.execute(`
+        const [countResult] = await promisePool.query(`
       SELECT COUNT(*) as total
       FROM conversations c
       JOIN advertisements a ON c.advertisement_id = a.id
@@ -99,7 +99,7 @@ const getConversationDetail = async (req, res) => {
         const { conversationId } = req.params;
 
         // Get conversation details
-        const [conversation] = await promisePool.execute(`
+        const [conversation] = await promisePool.query(`
       SELECT
         c.*,
         a.title as advertisement_title,
@@ -148,7 +148,7 @@ const getConversationMessages = async (req, res) => {
         const offset = (page - 1) * limit;
 
         // Get messages
-        const [messages] = await promisePool.execute(`
+        const [messages] = await promisePool.query(`
       SELECT
         m.id,
         m.sender_id,
@@ -168,7 +168,7 @@ const getConversationMessages = async (req, res) => {
     `, [conversationId, limit, offset]);
 
         // Get offers
-        const [offers] = await promisePool.execute(`
+        const [offers] = await promisePool.query(`
       SELECT
         o.*,
         sender.full_name as sender_name,
@@ -202,7 +202,7 @@ const getConversationMessages = async (req, res) => {
 const getStats = async (req, res) => {
     try {
         // Get conversation stats
-        const [conversationStats] = await promisePool.execute(`
+        const [conversationStats] = await promisePool.query(`
       SELECT
         COUNT(*) as total_conversations,
         COUNT(CASE WHEN DATE(last_message_at) = CURDATE() THEN 1 END) as today_conversations,
@@ -211,7 +211,7 @@ const getStats = async (req, res) => {
     `);
 
         // Get message stats
-        const [messageStats] = await promisePool.execute(`
+        const [messageStats] = await promisePool.query(`
       SELECT
         COUNT(*) as total_messages,
         COUNT(CASE WHEN DATE(created_at) = CURDATE() THEN 1 END) as today_messages,
@@ -220,7 +220,7 @@ const getStats = async (req, res) => {
     `);
 
         // Get offer stats
-        const [offerStats] = await promisePool.execute(`
+        const [offerStats] = await promisePool.query(`
       SELECT
         COUNT(*) as total_offers,
         COUNT(CASE WHEN status = 'pending' THEN 1 END) as pending_offers,
@@ -253,7 +253,7 @@ const deleteConversation = async (req, res) => {
         const { conversationId } = req.params;
 
         // Delete conversation (cascade will delete messages and offers)
-        await promisePool.execute(`
+        await promisePool.query(`
       DELETE FROM conversations WHERE id = ?
     `, [conversationId]);
 
@@ -276,7 +276,7 @@ const deleteMessage = async (req, res) => {
     try {
         const { messageId } = req.params;
 
-        await promisePool.execute(`
+        await promisePool.query(`
       DELETE FROM messages WHERE id = ?
     `, [messageId]);
 

@@ -54,7 +54,7 @@ async function createNotification(data) {
         const targetConditionsJson = targetConditions ? JSON.stringify(targetConditions) : null;
         const actionDataJson = actionData ? JSON.stringify(actionData) : null;
 
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `INSERT INTO notifications 
         (title, message, type, priority, target_audience, target_user_ids, target_conditions,
          image_url, action_type, action_data, scheduled_at, expires_at, created_by)
@@ -80,7 +80,7 @@ async function createNotification(data) {
  */
 async function getNotificationById(id) {
     try {
-        const [rows] = await promisePool.execute(
+        const [rows] = await promisePool.query(
             `SELECT * FROM notifications WHERE id = ? AND is_active = TRUE`,
             [id]
         );
@@ -157,7 +157,7 @@ async function getAllNotifications(filters = {}) {
         query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
         params.push(limit, offset);
 
-        const [rows] = await promisePool.execute(query, params);
+        const [rows] = await promisePool.query(query, params);
 
         // Parse JSON fields for each notification
         return rows.map(notification => {
@@ -230,7 +230,7 @@ async function updateNotification(id, data) {
         updates.push('updated_at = CURRENT_TIMESTAMP');
         params.push(id);
 
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `UPDATE notifications SET ${updates.join(', ')} WHERE id = ?`,
             params
         );
@@ -253,7 +253,7 @@ async function updateNotification(id, data) {
  */
 async function deleteNotification(id) {
     try {
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `UPDATE notifications SET is_active = FALSE, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
             [id]
         );
@@ -275,7 +275,7 @@ async function deleteNotification(id) {
  */
 async function getScheduledNotifications() {
     try {
-        const [rows] = await promisePool.execute(
+        const [rows] = await promisePool.query(
             `SELECT * FROM notifications
        WHERE is_active = TRUE
        AND scheduled_at <= NOW()
@@ -310,7 +310,7 @@ async function getScheduledNotifications() {
  */
 async function getNotificationStats(id) {
     try {
-        const [stats] = await promisePool.execute(
+        const [stats] = await promisePool.query(
             `SELECT 
         COUNT(*) as total_sent,
         SUM(CASE WHEN is_read = TRUE THEN 1 ELSE 0 END) as read_count,
@@ -383,7 +383,7 @@ async function getUserIdsByConditions(conditions) {
             params.push(conditions.created_before);
         }
 
-        const [rows] = await promisePool.execute(query, params);
+        const [rows] = await promisePool.query(query, params);
         return rows.map(row => row.id);
     } catch (error) {
         console.error('Get user IDs by conditions error:', error);

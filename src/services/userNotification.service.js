@@ -23,7 +23,7 @@ async function createUserNotifications(notificationId, userIds) {
         // Build bulk insert query
         const values = userIds.map(userId => `(${notificationId}, ${userId})`).join(',');
 
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `INSERT IGNORE INTO user_notifications (notification_id, user_id)
        VALUES ${values}`
         );
@@ -49,7 +49,7 @@ async function createUserNotifications(notificationId, userIds) {
  */
 async function getUserNotifications(userId, limit = 50, offset = 0) {
     try {
-        const [rows] = await promisePool.execute(
+        const [rows] = await promisePool.query(
             `SELECT 
         un.id as user_notification_id,
         un.is_read,
@@ -97,7 +97,7 @@ async function getUserNotifications(userId, limit = 50, offset = 0) {
  */
 async function getUnreadCount(userId) {
     try {
-        const [rows] = await promisePool.execute(
+        const [rows] = await promisePool.query(
             `SELECT COUNT(*) as count
        FROM user_notifications un
        JOIN notifications n ON un.notification_id = n.id
@@ -124,7 +124,7 @@ async function getUnreadCount(userId) {
  */
 async function markAsRead(userId, notificationId) {
     try {
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `UPDATE user_notifications
        SET is_read = TRUE, read_at = NOW()
        WHERE user_id = ? AND notification_id = ? AND is_read = FALSE`,
@@ -152,7 +152,7 @@ async function markAsRead(userId, notificationId) {
  */
 async function markAsClicked(userId, notificationId) {
     try {
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `UPDATE user_notifications
        SET is_clicked = TRUE, clicked_at = NOW(), is_read = TRUE, read_at = COALESCE(read_at, NOW())
        WHERE user_id = ? AND notification_id = ?`,
@@ -179,7 +179,7 @@ async function markAsClicked(userId, notificationId) {
  */
 async function markAllAsRead(userId) {
     try {
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `UPDATE user_notifications
        SET is_read = TRUE, read_at = NOW()
        WHERE user_id = ? AND is_read = FALSE`,
@@ -206,7 +206,7 @@ async function markAllAsRead(userId) {
  */
 async function deleteUserNotification(userId, notificationId) {
     try {
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `DELETE FROM user_notifications
        WHERE user_id = ? AND notification_id = ?`,
             [userId, notificationId]
@@ -233,7 +233,7 @@ async function deleteUserNotification(userId, notificationId) {
  */
 async function getNewNotificationsSinceLastCheck(userId, lastCheckAt) {
     try {
-        const [rows] = await promisePool.execute(
+        const [rows] = await promisePool.query(
             `SELECT 
         un.id as user_notification_id,
         n.id as notification_id,

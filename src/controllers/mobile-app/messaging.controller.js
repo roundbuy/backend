@@ -10,7 +10,14 @@ const getConversations = async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
     const offset = (page - 1) * limit;
 
-    // Get conversations where user is buyer or seller
+    // Get conversations where user is buyer or seller.
+    // The last message is resolved via a subquery (one row per
+    // conversation, picked by highest id) rather than a plain
+    // LEFT JOIN + GROUP BY c.id — that pattern both violates
+    // ONLY_FULL_GROUP_BY (m.message/sender_id/is_read aren't
+    // functionally dependent on c.id, since a conversation has many
+    // messages) and, even where it's permitted, only returns an
+    // arbitrary message per group rather than the actual latest one.
     const [conversations] = await promisePool.query(`
       SELECT
         c.id,
@@ -27,9 +34,9 @@ const getConversations = async (req, res) => {
         u1.avatar as buyer_avatar,
         u2.full_name as seller_name,
         u2.avatar as seller_avatar,
-        m.message as last_message,
-        m.sender_id as last_message_sender_id,
-        m.is_read,
+        lm.message as last_message,
+        lm.sender_id as last_message_sender_id,
+        lm.is_read,
         CASE
           WHEN c.buyer_id = ? THEN u2.full_name
           ELSE u1.full_name
@@ -42,10 +49,17 @@ const getConversations = async (req, res) => {
       JOIN advertisements a ON c.advertisement_id = a.id
       JOIN users u1 ON c.buyer_id = u1.id
       JOIN users u2 ON c.seller_id = u2.id
-      LEFT JOIN messages m ON c.id = m.conversation_id
+      LEFT JOIN (
+        SELECT m1.conversation_id, m1.message, m1.sender_id, m1.is_read
+        FROM messages m1
+        INNER JOIN (
+          SELECT conversation_id, MAX(id) as max_id
+          FROM messages
+          GROUP BY conversation_id
+        ) latest ON latest.conversation_id = m1.conversation_id AND latest.max_id = m1.id
+      ) lm ON lm.conversation_id = c.id
       WHERE (c.buyer_id = ? OR c.seller_id = ?)
       AND a.status IN ('published', 'sold')
-      GROUP BY c.id
       ORDER BY c.last_message_at DESC
       LIMIT ? OFFSET ?
     `, [userId, userId, userId, userId, limit, offset]);

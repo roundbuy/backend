@@ -144,7 +144,7 @@ exports.sendCampaignNotification = async (req, res) => {
         }
 
         // Get all active users
-        const [users] = await promisePool.execute(
+        const [users] = await promisePool.query(
             'SELECT id FROM users WHERE is_active = TRUE'
         );
 
@@ -282,7 +282,7 @@ exports.sendToUserGroup = async (req, res) => {
             params.push(filters.last_login_after);
         }
 
-        const [users] = await promisePool.execute(query, params);
+        const [users] = await promisePool.query(query, params);
 
         const scheduledDate = scheduled_at ? new Date(scheduled_at) : new Date();
         let scheduled = 0;
@@ -459,7 +459,7 @@ exports.previewRecipientCount = async (req, res) => {
             params.push(filters.created_before);
         }
 
-        const [result] = await promisePool.execute(query, params);
+        const [result] = await promisePool.query(query, params);
 
         res.json({
             success: true,
@@ -490,7 +490,7 @@ exports.searchUsers = async (req, res) => {
         }
 
         const searchTerm = `%${q}%`;
-        const [users] = await promisePool.execute(
+        const [users] = await promisePool.query(
             `SELECT id, email, full_name, subscription_plan_id, is_verified
             FROM users
             WHERE (email LIKE ? OR full_name LIKE ? OR id = ?)

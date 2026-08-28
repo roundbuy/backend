@@ -30,7 +30,9 @@ const getColors = async (req, res) => {
             data: {
                 colors: colors.map(color => ({
                     ...color,
-                    shades: JSON.parse(color.shades)
+                    // mysql2 already deserializes JSON_ARRAYAGG() results into
+                    // an array/object, not a string — only parse if it's still one.
+                    shades: typeof color.shades === 'string' ? JSON.parse(color.shades) : color.shades
                 }))
             }
         });

@@ -44,7 +44,7 @@ async function getAllCampaignNotifications(filters = {}) {
         query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
         params.push(limit, offset);
 
-        const [rows] = await promisePool.execute(query, params);
+        const [rows] = await promisePool.query(query, params);
 
         // Parse JSON fields
         return rows.map(notification => parseNotificationJSON(notification));
@@ -61,7 +61,7 @@ async function getAllCampaignNotifications(filters = {}) {
  */
 async function getCampaignNotificationById(id) {
     try {
-        const [rows] = await promisePool.execute(
+        const [rows] = await promisePool.query(
             'SELECT * FROM campaign_notifications WHERE id = ?',
             [id]
         );
@@ -84,7 +84,7 @@ async function getCampaignNotificationById(id) {
  */
 async function getCampaignNotificationByTypeKey(typeKey) {
     try {
-        const [rows] = await promisePool.execute(
+        const [rows] = await promisePool.query(
             'SELECT * FROM campaign_notifications WHERE type_key = ?',
             [typeKey]
         );
@@ -153,7 +153,7 @@ async function updateCampaignNotification(id, data) {
 
         params.push(id);
 
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `UPDATE campaign_notifications SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = ?`,
             params
         );
@@ -176,7 +176,7 @@ async function updateCampaignNotification(id, data) {
  */
 async function toggleCampaignNotification(id, isActive) {
     try {
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             'UPDATE campaign_notifications SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?',
             [isActive, id]
         );
@@ -198,7 +198,7 @@ async function toggleCampaignNotification(id, isActive) {
  */
 async function getCampaignNotificationStats(id) {
     try {
-        const [stats] = await promisePool.execute(
+        const [stats] = await promisePool.query(
             `SELECT 
                 COUNT(*) as total_sent,
                 SUM(CASE WHEN is_read = TRUE THEN 1 ELSE 0 END) as read_count,
