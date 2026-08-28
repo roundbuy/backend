@@ -22,7 +22,7 @@ const schedulePickup = async (req, res) => {
         }
 
         // Verify the user has an order with pickup option
-        let [orders] = await promisePool.execute(
+        let [orders] = await promisePool.query(
             `SELECT * FROM orders WHERE buyer_id = ? AND advertisement_id = ? AND status IN ('confirmed', 'completed', 'shipped', 'delivered')`,
             [userId, advertisement_id]
         );
@@ -41,7 +41,7 @@ const schedulePickup = async (req, res) => {
 
         // Check quick_orders table if not found in orders
         if (!validOrder) {
-            const [quickOrders] = await promisePool.execute(
+            const [quickOrders] = await promisePool.query(
                 `SELECT * FROM quick_orders WHERE buyer_id = ? AND advertisement_id = ? AND order_status IN ('confirmed', 'completed')`,
                 [userId, advertisement_id]
             );
@@ -67,14 +67,14 @@ const schedulePickup = async (req, res) => {
         }
 
         // Get advertisement info to determine seller ID
-        const [ads] = await promisePool.execute('SELECT user_id FROM advertisements WHERE id = ?', [advertisement_id]);
+        const [ads] = await promisePool.query('SELECT user_id FROM advertisements WHERE id = ?', [advertisement_id]);
         if (ads.length === 0) {
             return res.status(404).json({ success: false, message: 'Ad not found' });
         }
         const sellerId = ads[0].user_id;
 
         // Check if pickup already exists for this advertisement and buyer
-        const [existingPickup] = await promisePool.execute(
+        const [existingPickup] = await promisePool.query(
             'SELECT id FROM pickup_schedules WHERE advertisement_id = ? AND buyer_id = ? AND status NOT IN ("cancelled")',
             [advertisement_id, userId]
         );
@@ -100,7 +100,7 @@ const schedulePickup = async (req, res) => {
         const safeOfferId = offer_id || null;
 
         // Create pickup schedule
-        const [result] = await promisePool.execute(
+        const [result] = await promisePool.query(
             `INSERT INTO pickup_schedules
        (offer_id, advertisement_id, buyer_id, seller_id, scheduled_date, scheduled_time,
         description, pickup_fee, safe_service_fee, buyer_fee, item_fee, item_fee_discount,
@@ -112,7 +112,7 @@ const schedulePickup = async (req, res) => {
         );
 
         // Get the created pickup
-        const [pickup] = await promisePool.execute(
+        const [pickup] = await promisePool.query(
             `SELECT ps.*, 
               a.title as advertisement_title,
               a.images as advertisement_images,
@@ -220,7 +220,7 @@ const getUserPickups = async (req, res) => {
             : '';
 
         // Get pickups
-        const [pickups] = await promisePool.execute(`
+        const [pickups] = await promisePool.query(`
       SELECT 
         ps.*,
         a.title as advertisement_title,
@@ -247,7 +247,7 @@ const getUserPickups = async (req, res) => {
     `, [userId, userId, ...queryParams, parseInt(limit), parseInt(offset)]);
 
         // Get total count
-        const [countResult] = await promisePool.execute(`
+        const [countResult] = await promisePool.query(`
       SELECT COUNT(*) as total
       FROM pickup_schedules ps
       ${whereClause}
@@ -282,7 +282,7 @@ const getPickupDetails = async (req, res) => {
         const userId = req.user.id;
         const { pickupId } = req.params;
 
-        const [pickups] = await promisePool.execute(`
+        const [pickups] = await promisePool.query(`
       SELECT 
         ps.*,
         a.title as advertisement_title,
@@ -339,7 +339,7 @@ const confirmPickup = async (req, res) => {
         const { pickupId } = req.params;
 
         // Get pickup
-        const [pickups] = await promisePool.execute(
+        const [pickups] = await promisePool.query(
             'SELECT * FROM pickup_schedules WHERE id = ?',
             [pickupId]
         );
@@ -370,7 +370,7 @@ const confirmPickup = async (req, res) => {
         }
 
         // Update status to confirmed
-        await promisePool.execute(
+        await promisePool.query(
             'UPDATE pickup_schedules SET status = ?, confirmed_at = NOW() WHERE id = ?',
             ['confirmed', pickupId]
         );
@@ -435,7 +435,7 @@ const reschedulePickup = async (req, res) => {
         }
 
         // Get pickup
-        const [pickups] = await promisePool.execute(
+        const [pickups] = await promisePool.query(
             'SELECT * FROM pickup_schedules WHERE id = ?',
             [pickupId]
         );
@@ -458,7 +458,7 @@ const reschedulePickup = async (req, res) => {
         }
 
         // Update pickup
-        await promisePool.execute(
+        await promisePool.query(
             `UPDATE pickup_schedules 
        SET scheduled_date = ?, scheduled_time = ?, status = 'rescheduled', 
            reschedule_count = reschedule_count + 1, reschedule_reason = ?, description = ?
@@ -522,7 +522,7 @@ const cancelPickup = async (req, res) => {
         const cancellation_reason = req.body?.cancellation_reason || null;
 
         // Get pickup
-        const [pickups] = await promisePool.execute(
+        const [pickups] = await promisePool.query(
             'SELECT * FROM pickup_schedules WHERE id = ?',
             [pickupId]
         );
@@ -545,7 +545,7 @@ const cancelPickup = async (req, res) => {
         }
 
         // Update status to cancelled
-        await promisePool.execute(
+        await promisePool.query(
             'UPDATE pickup_schedules SET status = ?, reschedule_reason = ? WHERE id = ?',
             ['cancelled', cancellation_reason, pickupId]
         );
@@ -600,7 +600,7 @@ const cancelPickup = async (req, res) => {
 // Get current pickup fees
 const getPickupFees = async (req, res) => {
     try {
-        const [fees] = await promisePool.execute(
+        const [fees] = await promisePool.query(
             'SELECT fee_type, amount, is_percentage, currency, description FROM pickup_fees WHERE is_active = TRUE'
         );
 
@@ -653,7 +653,7 @@ const getUnpaidPickups = async (req, res) => {
     try {
         const userId = req.user.id;
 
-        const [pickups] = await promisePool.execute(`
+        const [pickups] = await promisePool.query(`
       SELECT 
         ps.*,
         a.title as advertisement_title,
@@ -688,7 +688,7 @@ const completePickup = async (req, res) => {
         const { pickupId } = req.params;
 
         // Get pickup
-        const [pickups] = await promisePool.execute(
+        const [pickups] = await promisePool.query(
             'SELECT * FROM pickup_schedules WHERE id = ?',
             [pickupId]
         );
@@ -711,7 +711,7 @@ const completePickup = async (req, res) => {
         }
 
         // Update status
-        await promisePool.execute(
+        await promisePool.query(
             'UPDATE pickup_schedules SET status = ?, completed_at = NOW() WHERE id = ?',
             ['completed', pickupId]
         );

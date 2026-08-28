@@ -68,17 +68,17 @@ exports.getRoomState = async (req, res) => {
     try {
         const { id: eventId } = req.params;
 
-        const [events] = await promisePool.execute('SELECT * FROM events WHERE id = ?', [eventId]);
+        const [events] = await promisePool.query('SELECT * FROM events WHERE id = ?', [eventId]);
         if (!events.length) return res.status(404).json({ success: false, message: 'Event not found' });
         
-        const [participants] = await promisePool.execute(`
+        const [participants] = await promisePool.query(`
             SELECT u.id, u.full_name, u.avatar 
             FROM event_room_participants erp
             JOIN users u ON erp.user_id = u.id
             WHERE erp.event_id = ? AND erp.is_active = 1
         `, [eventId]);
 
-        const [items] = await promisePool.execute(`
+        const [items] = await promisePool.query(`
             SELECT * FROM event_items 
             WHERE event_id = ? AND status != 'withdrawn'
             ORDER BY created_at DESC
@@ -116,7 +116,7 @@ exports.uploadItem = async (req, res) => {
             bidEndsAt = new Date(Date.now() + bid_duration_minutes * 60000);
         }
 
-        const [result] = await promisePool.execute(`
+        const [result] = await promisePool.query(`
             INSERT INTO event_items 
             (event_id, uploaded_by, title, description, images, starting_price, current_highest_bid, bid_ends_at, status) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
@@ -124,7 +124,7 @@ exports.uploadItem = async (req, res) => {
 
         const newItemId = result.insertId;
 
-        const [newItems] = await promisePool.execute('SELECT * FROM event_items WHERE id = ?', [newItemId]);
+        const [newItems] = await promisePool.query('SELECT * FROM event_items WHERE id = ?', [newItemId]);
         const newItem = newItems[0];
 
         // Broadcast new item
@@ -132,7 +132,7 @@ exports.uploadItem = async (req, res) => {
 
         // Add system message
         const systemMessage = `${req.user.full_name} uploaded a new item: ${title}`;
-        const [msgResult] = await promisePool.execute(`
+        const [msgResult] = await promisePool.query(`
             INSERT INTO event_room_messages (event_id, sender_id, message, message_type, is_system) 
             VALUES (?, ?, ?, 'system', 1)
         `, [eventId, userId, systemMessage]);
@@ -160,7 +160,7 @@ exports.uploadItem = async (req, res) => {
 exports.getItems = async (req, res) => {
     try {
         const { id: eventId } = req.params;
-        const [items] = await promisePool.execute(`
+        const [items] = await promisePool.query(`
             SELECT * FROM event_items 
             WHERE event_id = ? AND status != 'withdrawn'
             ORDER BY created_at DESC
@@ -250,7 +250,7 @@ exports.placeBid = async (req, res) => {
             await connection.commit();
 
             // Fetch updated item to broadcast
-            const [updatedItems] = await promisePool.execute('SELECT * FROM event_items WHERE id = ?', [item_id]);
+            const [updatedItems] = await promisePool.query('SELECT * FROM event_items WHERE id = ?', [item_id]);
 
             broadcastToRoom(eventId, 'new_bid', {
                 item_id,
@@ -261,7 +261,7 @@ exports.placeBid = async (req, res) => {
 
             // Add system chat message about bid
             const systemMessage = `${req.user.full_name} bid £${bid_amount} on ${item.title}`;
-            const [msgResult] = await promisePool.execute(`
+            const [msgResult] = await promisePool.query(`
                 INSERT INTO event_room_messages (event_id, sender_id, message, message_type, is_system) 
                 VALUES (?, ?, ?, 'bid_update', 1)
             `, [eventId, userId, systemMessage]);
@@ -333,7 +333,7 @@ exports.getChat = async (req, res) => {
         query += ` ORDER BY m.id DESC LIMIT ?`;
         params.push(parseInt(limit));
 
-        const [messages] = await promisePool.execute(query, params);
+        const [messages] = await promisePool.query(query, params);
 
         res.json({ success: true, data: { messages: messages.reverse() } });
     } catch (error) {
@@ -358,7 +358,7 @@ exports.sendChat = async (req, res) => {
         let messageType = 'text';
         if (image_url) messageType = 'image';
 
-        const [result] = await promisePool.execute(`
+        const [result] = await promisePool.query(`
             INSERT INTO event_room_messages (event_id, sender_id, message, message_type, image_url) 
             VALUES (?, ?, ?, ?, ?)
         `, [eventId, userId, message || '', messageType, image_url || null]);
@@ -412,7 +412,7 @@ exports.linkProduct = async (req, res) => {
         advertisement_id = parseInt(advertisement_id);
 
         // Fetch the advertisement
-        const [ads] = await promisePool.execute(`
+        const [ads] = await promisePool.query(`
             SELECT a.id, a.title, a.description, a.price, a.images, a.user_id
             FROM advertisements a
             WHERE a.id = ? AND a.status IN ('active', 'published', 'approved')
@@ -421,7 +421,7 @@ exports.linkProduct = async (req, res) => {
 
         if (!ads.length) {
             // Try without status filter in case column names differ
-            const [ads2] = await promisePool.execute(
+            const [ads2] = await promisePool.query(
                 `SELECT id, title, description, price, images, user_id FROM advertisements WHERE id = ? LIMIT 1`,
                 [advertisement_id]
             );
@@ -434,7 +434,7 @@ exports.linkProduct = async (req, res) => {
         const ad = ads[0];
 
         // Check if already linked in this room
-        const [existing] = await promisePool.execute(
+        const [existing] = await promisePool.query(
             `SELECT id FROM event_items WHERE event_id = ? AND advertisement_id = ? AND status != 'withdrawn'`,
             [eventId, advertisement_id]
         );
@@ -443,7 +443,7 @@ exports.linkProduct = async (req, res) => {
         }
 
         // Insert as a featured item
-        const [result] = await promisePool.execute(`
+        const [result] = await promisePool.query(`
             INSERT INTO event_items
             (event_id, uploaded_by, advertisement_id, title, description, images, starting_price, current_highest_bid, status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
@@ -458,7 +458,7 @@ exports.linkProduct = async (req, res) => {
             ad.price || 0
         ]);
 
-        const [newItems] = await promisePool.execute('SELECT * FROM event_items WHERE id = ?', [result.insertId]);
+        const [newItems] = await promisePool.query('SELECT * FROM event_items WHERE id = ?', [result.insertId]);
         const newItem = newItems[0];
 
         // Broadcast to room
@@ -466,7 +466,7 @@ exports.linkProduct = async (req, res) => {
 
         // System message
         const systemMsg = `${req.user.full_name} featured a product: ${ad.title}`;
-        const [msgResult] = await promisePool.execute(
+        const [msgResult] = await promisePool.query(
             `INSERT INTO event_room_messages (event_id, sender_id, message, message_type, is_system) VALUES (?, ?, ?, 'system', 1)`,
             [eventId, userId, systemMsg]
         );
@@ -492,7 +492,7 @@ exports.linkProduct = async (req, res) => {
 // Check for expired item bids (can be called periodically or via scheduler)
 exports.resolveExpiredBids = async () => {
     try {
-        const [expiredItems] = await promisePool.execute(`
+        const [expiredItems] = await promisePool.query(`
             SELECT id, current_highest_bidder_id, title, event_id 
             FROM event_items 
             WHERE status = 'active' AND bid_ends_at <= NOW()
@@ -501,11 +501,11 @@ exports.resolveExpiredBids = async () => {
         for (const item of expiredItems) {
             if (item.current_highest_bidder_id) {
                 // Someone won
-                await promisePool.execute(`UPDATE event_items SET status = 'sold', winner_id = ? WHERE id = ?`, [item.current_highest_bidder_id, item.id]);
+                await promisePool.query(`UPDATE event_items SET status = 'sold', winner_id = ? WHERE id = ?`, [item.current_highest_bidder_id, item.id]);
                 
                 // Add system message
                 const systemMessage = `Item Sold: ${item.title} to highest bidder.`;
-                const [msgResult] = await promisePool.execute(`
+                const [msgResult] = await promisePool.query(`
                     INSERT INTO event_room_messages (event_id, sender_id, message, message_type, is_system) 
                     VALUES (?, ?, ?, 'system', 1)
                 `, [item.event_id, 0, systemMessage]);
@@ -524,7 +524,7 @@ exports.resolveExpiredBids = async () => {
                 // ...
             } else {
                 // No bids
-                await promisePool.execute(`UPDATE event_items SET status = 'unsold' WHERE id = ?`, [item.id]);
+                await promisePool.query(`UPDATE event_items SET status = 'unsold' WHERE id = ?`, [item.id]);
             }
             
             // Broadcast item status update
@@ -546,7 +546,7 @@ exports.resolveExpiredBids = async () => {
 exports.getEventItemDetails = async (req, res) => {
     try {
         const { itemId } = req.params;
-        const [items] = await promisePool.execute('SELECT * FROM event_items WHERE id = ?', [itemId]);
+        const [items] = await promisePool.query('SELECT * FROM event_items WHERE id = ?', [itemId]);
         if (!items.length) {
             return res.status(404).json({ success: false, message: 'Event item not found' });
         }
@@ -566,7 +566,7 @@ exports.getRoomBids = async (req, res) => {
     try {
         const { id: eventId } = req.params;
 
-        const [bids] = await promisePool.execute(`
+        const [bids] = await promisePool.query(`
             SELECT
                 eb.id,
                 eb.bid_amount,
@@ -606,7 +606,7 @@ exports.acceptBid = async (req, res) => {
         const userId = req.user.id;
 
         // Fetch the bid and its item
-        const [bids] = await promisePool.execute(`
+        const [bids] = await promisePool.query(`
             SELECT eb.*, ei.title AS item_title, ei.uploaded_by AS item_owner_id
             FROM event_bids eb
             JOIN event_items ei ON eb.event_item_id = ei.id
@@ -629,14 +629,14 @@ exports.acceptBid = async (req, res) => {
         }
 
         // Mark item sold with this bidder as winner
-        await promisePool.execute(
+        await promisePool.query(
             `UPDATE event_items SET status = 'sold', winner_id = ?, current_highest_bidder_id = ?, updated_at = NOW() WHERE id = ?`,
             [bid.bidder_id, bid.bidder_id, bid.event_item_id]
         );
 
         // Mark this bid as winning, clear others
-        await promisePool.execute('UPDATE event_bids SET is_winning_bid = 0 WHERE event_item_id = ?', [bid.event_item_id]);
-        await promisePool.execute('UPDATE event_bids SET is_winning_bid = 1 WHERE id = ?', [bidId]);
+        await promisePool.query('UPDATE event_bids SET is_winning_bid = 0 WHERE event_item_id = ?', [bid.event_item_id]);
+        await promisePool.query('UPDATE event_bids SET is_winning_bid = 1 WHERE id = ?', [bidId]);
 
         // Broadcast item sold event
         broadcastToRoom(eventId, 'item_updated', {
@@ -647,7 +647,7 @@ exports.acceptBid = async (req, res) => {
 
         // System chat message
         const sysMsg = `🎉 Offer accepted! ${bid.item_title} sold to ${bid.bidder_name || 'a bidder'} for £${bid.bid_amount}`;
-        const [msgResult] = await promisePool.execute(
+        const [msgResult] = await promisePool.query(
             `INSERT INTO event_room_messages (event_id, sender_id, message, message_type, is_system) VALUES (?, ?, ?, 'system', 1)`,
             [eventId, userId, sysMsg]
         );
@@ -695,7 +695,7 @@ exports.declineBid = async (req, res) => {
         const { id: eventId, bidId } = req.params;
         const userId = req.user.id;
 
-        const [bids] = await promisePool.execute(`
+        const [bids] = await promisePool.query(`
             SELECT eb.*, ei.title AS item_title, ei.uploaded_by AS item_owner_id
             FROM event_bids eb
             JOIN event_items ei ON eb.event_item_id = ei.id
@@ -713,14 +713,14 @@ exports.declineBid = async (req, res) => {
         }
 
         // Mark bid as declined (add declined column flag)
-        await promisePool.execute(
+        await promisePool.query(
             `UPDATE event_bids SET is_winning_bid = 0, declined = 1 WHERE id = ?`,
             [bidId]
         );
 
         // System chat: subtle notification
         const sysMsg = `A bid of £${bid.bid_amount} on "${bid.item_title}" was declined. Bidding continues.`;
-        const [msgResult] = await promisePool.execute(
+        const [msgResult] = await promisePool.query(
             `INSERT INTO event_room_messages (event_id, sender_id, message, message_type, is_system) VALUES (?, ?, ?, 'system', 1)`,
             [eventId, userId, sysMsg]
         );

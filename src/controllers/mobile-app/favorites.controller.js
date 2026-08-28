@@ -4,11 +4,12 @@ const { promisePool } = require('../../config/database');
 const getUserFavorites = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { page = 1, limit = 20 } = req.query;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
     const offset = (page - 1) * limit;
 
     // Get favorites with advertisement details
-    const [favorites] = await promisePool.execute(`
+    const [favorites] = await promisePool.query(`
       SELECT
         f.id as favorite_id,
         f.created_at as favorited_at,
@@ -37,7 +38,7 @@ const getUserFavorites = async (req, res) => {
     `, [userId, limit, offset]);
 
     // Get total count
-    const [countResult] = await promisePool.execute(`
+    const [countResult] = await promisePool.query(`
       SELECT COUNT(*) as total
       FROM favorites f
       JOIN advertisements a ON f.advertisement_id = a.id
@@ -52,8 +53,8 @@ const getUserFavorites = async (req, res) => {
       data: {
         favorites,
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page,
+          limit,
           total,
           totalPages
         }
@@ -64,7 +65,8 @@ const getUserFavorites = async (req, res) => {
     console.error('Get user favorites error:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to fetch favorites'
+      message: 'Failed to fetch favorites',
+      error: error.message
     });
   }
 };
@@ -76,7 +78,7 @@ const addToFavorites = async (req, res) => {
     const { advertisement_id } = req.body;
 
     // Validate advertisement exists and is published
-    const [adCheck] = await promisePool.execute(`
+    const [adCheck] = await promisePool.query(`
       SELECT id, status FROM advertisements
       WHERE id = ? AND status IN ('published', 'sold')
     `, [advertisement_id]);
@@ -89,7 +91,7 @@ const addToFavorites = async (req, res) => {
     }
 
     // Check if already in favorites
-    const [existing] = await promisePool.execute(`
+    const [existing] = await promisePool.query(`
       SELECT id FROM favorites
       WHERE user_id = ? AND advertisement_id = ?
     `, [userId, advertisement_id]);
@@ -102,7 +104,7 @@ const addToFavorites = async (req, res) => {
     }
 
     // Add to favorites
-    const [result] = await promisePool.execute(`
+    const [result] = await promisePool.query(`
       INSERT INTO favorites (user_id, advertisement_id)
       VALUES (?, ?)
     `, [userId, advertisement_id]);
@@ -132,7 +134,7 @@ const removeFromFavorites = async (req, res) => {
     const { advertisement_id } = req.params;
 
     // Check if favorite exists and belongs to user
-    const [favorite] = await promisePool.execute(`
+    const [favorite] = await promisePool.query(`
       SELECT id FROM favorites
       WHERE user_id = ? AND advertisement_id = ?
     `, [userId, advertisement_id]);
@@ -145,7 +147,7 @@ const removeFromFavorites = async (req, res) => {
     }
 
     // Remove from favorites
-    await promisePool.execute(`
+    await promisePool.query(`
       DELETE FROM favorites
       WHERE user_id = ? AND advertisement_id = ?
     `, [userId, advertisement_id]);
@@ -170,7 +172,7 @@ const checkFavoriteStatus = async (req, res) => {
     const userId = req.user.id;
     const { advertisement_id } = req.params;
 
-    const [favorite] = await promisePool.execute(`
+    const [favorite] = await promisePool.query(`
       SELECT id FROM favorites
       WHERE user_id = ? AND advertisement_id = ?
     `, [userId, advertisement_id]);

@@ -107,7 +107,7 @@ const confirmDeal = async (req, res) => {
         const { advertisementId } = req.params;
 
         // Find the order for this advertisement that isn't cancelled
-        const [orderRows] = await promisePool.execute(
+        const [orderRows] = await promisePool.query(
             'SELECT id, buyer_id, seller_id, buyer_confirmed, seller_confirmed FROM orders WHERE advertisement_id = ? AND status NOT IN ("cancelled", "refunded") LIMIT 1',
             [advertisementId]
         );
@@ -127,7 +127,7 @@ const confirmDeal = async (req, res) => {
             return res.status(403).json({ success: false, message: 'You are not involved in this order' });
         }
 
-        await promisePool.execute(updateQuery, [order.id]);
+        await promisePool.query(updateQuery, [order.id]);
 
         res.json({
             success: true,
@@ -149,7 +149,7 @@ const getActionCenterMessages = async (req, res) => {
         const roleField = type === 'buying' ? 'c.buyer_id' : 'c.seller_id';
 
         // 1. Get conversations
-        const [conversations] = await promisePool.execute(`
+        const [conversations] = await promisePool.query(`
             SELECT 
                 c.id as conversation_id, c.advertisement_id, c.buyer_id, c.seller_id, c.last_message_at,
                 a.title as itemTitle, a.images as advertisement_images, a.price as itemPrice,
@@ -186,21 +186,21 @@ const getActionCenterMessages = async (req, res) => {
 
         for (const conv of conversations) {
             // Get latest offer
-            const [offers] = await promisePool.execute(
+            const [offers] = await promisePool.query(
                 'SELECT * FROM offers WHERE conversation_id = ? ORDER BY created_at DESC LIMIT 1',
                 [conv.conversation_id]
             );
             const latestOffer = offers[0];
 
             // Get order
-            const [orders] = await promisePool.execute(
+            const [orders] = await promisePool.query(
                 'SELECT id, status, payment_method, notes, buyer_confirmed, seller_confirmed, created_at, updated_at FROM orders WHERE buyer_id = ? AND advertisement_id = ? AND status IN ("confirmed", "shipped", "delivered", "completed")',
                 [conv.buyer_id, conv.advertisement_id]
             );
             const order = orders[0];
 
             // 1. Enquiry Notification (if matches keywords or if no offer/order exists)
-            const [msgRows] = await promisePool.execute(
+            const [msgRows] = await promisePool.query(
                 `SELECT id, created_at FROM messages WHERE conversation_id = ? AND sender_id = ? 
                  AND (
                      message LIKE '%?%' OR 
@@ -295,7 +295,7 @@ const getActionCenterMessages = async (req, res) => {
                 });
 
                 // 4. Pickup Notification
-                const [pickups] = await promisePool.execute(
+                const [pickups] = await promisePool.query(
                     'SELECT id, status, payment_status, created_at FROM pickup_schedules WHERE advertisement_id = ? AND status NOT IN ("cancelled") ORDER BY created_at DESC LIMIT 1',
                     [conv.advertisement_id]
                 );
@@ -368,7 +368,7 @@ const getActionCenterMessages = async (req, res) => {
                 });
 
                 // 6. Give Feedback Notification
-                const [reviews] = await promisePool.execute(
+                const [reviews] = await promisePool.query(
                     'SELECT id, created_at FROM reviews WHERE reviewer_id = ? AND order_id = ? LIMIT 1',
                     [userId, order.id]
                 );
@@ -419,7 +419,7 @@ const getActionStatus = async (req, res) => {
         const { conversationId } = req.params;
 
         // Fetch conversation details to get buyer, seller, and advertisement
-        const [convRows] = await promisePool.execute(
+        const [convRows] = await promisePool.query(
             'SELECT advertisement_id, buyer_id, seller_id FROM conversations WHERE id = ?',
             [conversationId]
         );
@@ -454,7 +454,7 @@ const getActionStatus = async (req, res) => {
 
         // Step 1: Enquiries (Has the user sent a specific kind of message?)
         // Rules: message contains ?, what, how, when OR if there's an image. Right now we just check the message text.
-        const [msgRows] = await promisePool.execute(
+        const [msgRows] = await promisePool.query(
             `SELECT id FROM messages WHERE conversation_id = ? AND sender_id = ? 
              AND (
                  message LIKE '%?%' OR 
@@ -470,7 +470,7 @@ const getActionStatus = async (req, res) => {
 
         // Step 2: Offers (Does an offer exist for this conversation?)
         // (User feedback: Should be 'Done' if an offer is merely made, not just accepted)
-        const [offerRows] = await promisePool.execute(
+        const [offerRows] = await promisePool.query(
             'SELECT id FROM offers WHERE conversation_id = ? LIMIT 1',
             [conversationId]
         );
@@ -482,7 +482,7 @@ const getActionStatus = async (req, res) => {
         status.meta.deliveryOption = null;
 
         // Step 3: Payment (Does an order exist for this advertisement and buyer?)
-        const [orderRows] = await promisePool.execute(
+        const [orderRows] = await promisePool.query(
             'SELECT id, status, payment_method, notes, buyer_confirmed, seller_confirmed FROM orders WHERE buyer_id = ? AND advertisement_id = ? AND status IN ("confirmed", "shipped", "delivered", "completed")',
             [buyer_id, advertisement_id]
         );
@@ -507,7 +507,7 @@ const getActionStatus = async (req, res) => {
 
         // Step 4: Schedule Pickup (Does *any* active pickup schedule exist?)
         // (User feedback: Should be 'Done' if a schedule is created, even if pending)
-        const [pickupRows] = await promisePool.execute(
+        const [pickupRows] = await promisePool.query(
             'SELECT id FROM pickup_schedules WHERE advertisement_id = ? AND status NOT IN ("cancelled") LIMIT 1',
             [advertisement_id]
         );
@@ -515,7 +515,7 @@ const getActionStatus = async (req, res) => {
 
         // Step 6: Give Feedback (Has the user submitted a review for this order/ad?)
         if (status.meta.orderId) {
-            const [reviewRows] = await promisePool.execute(
+            const [reviewRows] = await promisePool.query(
                 'SELECT id FROM reviews WHERE reviewer_id = ? AND order_id = ? LIMIT 1',
                 [userId, status.meta.orderId]
             );

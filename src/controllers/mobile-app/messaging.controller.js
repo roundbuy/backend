@@ -11,7 +11,7 @@ const getConversations = async (req, res) => {
     const offset = (page - 1) * limit;
 
     // Get conversations where user is buyer or seller
-    const [conversations] = await promisePool.execute(`
+    const [conversations] = await promisePool.query(`
       SELECT
         c.id,
         c.advertisement_id,
@@ -51,7 +51,7 @@ const getConversations = async (req, res) => {
     `, [userId, userId, userId, userId, limit, offset]);
 
     // Get total count
-    const [countResult] = await promisePool.execute(`
+    const [countResult] = await promisePool.query(`
       SELECT COUNT(*) as total
       FROM conversations c
       JOIN advertisements a ON c.advertisement_id = a.id
@@ -91,7 +91,7 @@ const getConversationMessages = async (req, res) => {
     const offset = (page - 1) * limit;
 
     // Verify user has access to this conversation
-    const [conversationCheck] = await promisePool.execute(`
+    const [conversationCheck] = await promisePool.query(`
       SELECT id FROM conversations
       WHERE id = ? AND (buyer_id = ? OR seller_id = ?)
     `, [conversationId, userId, userId]);
@@ -104,7 +104,7 @@ const getConversationMessages = async (req, res) => {
     }
 
     // Get messages
-    const [messages] = await promisePool.execute(`
+    const [messages] = await promisePool.query(`
       SELECT
         m.id,
         m.sender_id,
@@ -122,14 +122,14 @@ const getConversationMessages = async (req, res) => {
     `, [conversationId, limit, offset]);
 
     // Mark messages as read (where user is receiver)
-    await promisePool.execute(`
+    await promisePool.query(`
       UPDATE messages
       SET is_read = true
       WHERE conversation_id = ? AND receiver_id = ? AND is_read = false
     `, [conversationId, userId]);
 
     // Get conversation details
-    const [conversation] = await promisePool.execute(`
+    const [conversation] = await promisePool.query(`
       SELECT
         c.*,
         a.title as advertisement_title,
@@ -183,7 +183,7 @@ const sendMessage = async (req, res) => {
     }
 
     // Validate advertisement exists and is published
-    const [adCheck] = await promisePool.execute(`
+    const [adCheck] = await promisePool.query(`
       SELECT id, user_id as seller_id, status, title
       FROM advertisements
       WHERE id = ? AND status IN ('published', 'sold')
@@ -234,7 +234,7 @@ const sendMessage = async (req, res) => {
     // If a conversation_id is explicitly passed from the frontend, use it to determine the correct receiver
     if (req.body.conversation_id) {
       conversationId = req.body.conversation_id;
-      const [existingConv] = await promisePool.execute(`
+      const [existingConv] = await promisePool.query(`
          SELECT buyer_id, seller_id FROM conversations WHERE id = ?
        `, [conversationId]);
 
@@ -261,7 +261,7 @@ const sendMessage = async (req, res) => {
         });
       }
 
-      const [existingConversation] = await promisePool.execute(`
+      const [existingConversation] = await promisePool.query(`
           SELECT id FROM conversations
           WHERE advertisement_id = ? AND buyer_id = ? AND seller_id = ?
         `, [advertisement_id, buyerId, sellerId]);
@@ -270,7 +270,7 @@ const sendMessage = async (req, res) => {
         conversationId = existingConversation[0].id;
       } else {
         // Create new conversation
-        const [result] = await promisePool.execute(`
+        const [result] = await promisePool.query(`
             INSERT INTO conversations (advertisement_id, buyer_id, seller_id)
             VALUES (?, ?, ?)
           `, [advertisement_id, buyerId, sellerId]);
@@ -279,20 +279,20 @@ const sendMessage = async (req, res) => {
     }
 
     // Insert message
-    const [messageResult] = await promisePool.execute(`
+    const [messageResult] = await promisePool.query(`
       INSERT INTO messages (sender_id, receiver_id, advertisement_id, conversation_id, message)
       VALUES (?, ?, ?, ?, ?)
     `, [senderId, actualReceiverId, advertisement_id, conversationId, message]);
 
     // Update conversation last_message_at
-    await promisePool.execute(`
+    await promisePool.query(`
       UPDATE conversations
       SET last_message_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `, [conversationId]);
 
     // Get the inserted message with sender details
-    const [newMessage] = await promisePool.execute(`
+    const [newMessage] = await promisePool.query(`
       SELECT
         m.id,
         m.sender_id,
@@ -365,7 +365,7 @@ const makeOffer = async (req, res) => {
     const { conversation_id, offered_price, message } = req.body;
 
     // Verify user has access to conversation and get conversation details
-    const [conversationCheck] = await promisePool.execute(`
+    const [conversationCheck] = await promisePool.query(`
       SELECT c.id, c.advertisement_id, c.buyer_id, c.seller_id
       FROM conversations c
       WHERE c.id = ? AND (c.buyer_id = ? OR c.seller_id = ?)
@@ -381,7 +381,7 @@ const makeOffer = async (req, res) => {
     const conversation = conversationCheck[0];
 
     // Check if there's already a pending offer in this conversation
-    const [pendingOffer] = await promisePool.execute(`
+    const [pendingOffer] = await promisePool.query(`
       SELECT id FROM offers
       WHERE conversation_id = ? AND status = 'pending'
     `, [conversation_id]);
@@ -394,7 +394,7 @@ const makeOffer = async (req, res) => {
     }
 
     // Get user's currency preference (for display purposes)
-    const [userPrefs] = await promisePool.execute(`
+    const [userPrefs] = await promisePool.query(`
       SELECT currency_code FROM users WHERE id = ?
     `, [senderId]);
 
@@ -428,7 +428,7 @@ const makeOffer = async (req, res) => {
     }
 
     // Insert offer with advertisement_id, buyer_id, and seller_id
-    const [result] = await promisePool.execute(`
+    const [result] = await promisePool.query(`
       INSERT INTO offers (
         conversation_id, 
         advertisement_id, 
@@ -450,7 +450,7 @@ const makeOffer = async (req, res) => {
     ]);
 
     // Get the inserted offer
-    const [newOffer] = await promisePool.execute(`
+    const [newOffer] = await promisePool.query(`
       SELECT
         o.*,
         u.full_name as sender_name,
@@ -518,7 +518,7 @@ const respondToOffer = async (req, res) => {
     const { action, counter_price } = req.body; // action: 'accept', 'reject', 'counter'
 
     // Get offer details
-    const [offerCheck] = await promisePool.execute(`
+    const [offerCheck] = await promisePool.query(`
       SELECT o.*, c.advertisement_id, c.buyer_id, c.seller_id
       FROM offers o
       JOIN conversations c ON o.conversation_id = c.id
@@ -563,7 +563,7 @@ const respondToOffer = async (req, res) => {
     }
 
     // Update offer
-    await promisePool.execute(`
+    await promisePool.query(`
       UPDATE offers
       SET status = ?, offered_price = ?, updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
@@ -571,7 +571,7 @@ const respondToOffer = async (req, res) => {
 
     // If counter offer, create a new offer
     if (action === 'counter') {
-      await promisePool.execute(`
+      await promisePool.query(`
         INSERT INTO offers (
           conversation_id, 
           advertisement_id, 
@@ -659,7 +659,7 @@ const getConversationOffers = async (req, res) => {
     const { conversationId } = req.params;
 
     // Verify access
-    const [accessCheck] = await promisePool.execute(`
+    const [accessCheck] = await promisePool.query(`
       SELECT id FROM conversations
       WHERE id = ? AND (buyer_id = ? OR seller_id = ?)
     `, [conversationId, userId, userId]);
@@ -672,7 +672,7 @@ const getConversationOffers = async (req, res) => {
     }
 
     // Get offers
-    const [offers] = await promisePool.execute(`
+    const [offers] = await promisePool.query(`
       SELECT
         o.*,
         u.full_name as sender_name,
