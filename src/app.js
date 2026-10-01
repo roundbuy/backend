@@ -156,6 +156,8 @@ app.use(`/api/${API_VERSION}/admin/campaign-notifications`, adminCampaignNotific
 app.use(`/api/${API_VERSION}/admin/campaign-notifications`, debugCampaignRoutes); // Debug routes
 app.use(`/api/${API_VERSION}/admin/seller-metrics`, require('./routes/admin/sellerMetrics.admin.routes'));
 app.use(`/api/${API_VERSION}/admin/onboarding`, require('./routes/admin/onboarding.admin.routes'));
+app.use(`/api/${API_VERSION}/admin/marketplace-dashboard`, require('./routes/admin/marketplaceDashboard.admin.routes'));
+app.use(`/api/${API_VERSION}/surveys`, require('./routes/survey.routes'));
 
 // Admin routes (General) - Must come after specific routes
 app.use(`/api/${API_VERSION}/admin`, adminRoutes);

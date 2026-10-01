@@ -163,7 +163,8 @@ const getUserProfile = async (req, res) => {
                measurement_unit, lottery_credits,
                cumulative_earnings, kyc_required, kyc_completed, kyc_remind_after,
                preferred_country, preferred_currency, user_type, kyc_status,
-               country_auto_detected, last_country_detection_at
+               country_auto_detected, last_country_detection_at,
+               is_donator, show_donator_status
          FROM users WHERE id = ?`,
             [userId]
         );
@@ -205,7 +206,7 @@ const getUserProfile = async (req, res) => {
 const updateUserProfile = async (req, res) => {
     try {
         const userId = req.user.id;
-        const { full_name, phone, country_code, measurement_unit } = req.body;
+        const { full_name, phone, country_code, measurement_unit, show_donator_status, is_donator } = req.body;
 
         // Build dynamic update query
         const updates = [];
@@ -227,6 +228,14 @@ const updateUserProfile = async (req, res) => {
             updates.push('measurement_unit = ?');
             params.push(measurement_unit);
         }
+        if (show_donator_status !== undefined) {
+            updates.push('show_donator_status = ?');
+            params.push(show_donator_status ? 1 : 0);
+        }
+        if (is_donator !== undefined) {
+            updates.push('is_donator = ?');
+            params.push(is_donator ? 1 : 0);
+        }
 
         if (updates.length === 0) {
             return res.status(400).json({
@@ -246,7 +255,7 @@ const updateUserProfile = async (req, res) => {
         const [users] = await promisePool.query(
             `SELECT id, email, full_name, phone, avatar, country_code,
               created_at, updated_at, last_username_change, username, referral_code,
-              measurement_unit, lottery_credits
+              measurement_unit, lottery_credits, is_donator, show_donator_status
        FROM users WHERE id = ?`,
             [userId]
         );

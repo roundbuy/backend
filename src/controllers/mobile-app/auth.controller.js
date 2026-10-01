@@ -315,6 +315,8 @@ const login = async (req, res) => {
       });
     }
 
+    const identifier = (email || '').trim();
+
     // Get user with subscription plan details
     const [users] = await promisePool.query(
       `SELECT u.id, u.email, u.username, u.avatar, u.password_hash, u.full_name, u.role, u.is_active, u.is_verified, u.language_preference,
@@ -323,8 +325,8 @@ const login = async (req, res) => {
               sp.slug as subscription_plan_slug, sp.name as subscription_plan_name
        FROM users u
        LEFT JOIN subscription_plans sp ON u.subscription_plan_id = sp.id
-       WHERE u.email = ?`,
-      [email]
+       WHERE LOWER(u.email) = LOWER(?) OR (u.username IS NOT NULL AND u.username != '' AND LOWER(u.username) = LOWER(?))`,
+      [identifier, identifier]
     );
 
     if (users.length === 0) {
@@ -720,7 +722,9 @@ const appleLogin = async (req, res) => {
     let appleId, email;
     try {
       const verification = await appleSignin.verifyIdToken(token, {
-        audience: process.env.APPLE_CLIENT_ID || 'com.buyaround.roundbuy',
+        // Native (mobile) sign-in produces tokens audienced to the app bundle ID;
+        // web sign-in (via the Services ID) produces tokens audienced to APPLE_SERVICE_ID.
+        audience: [process.env.APPLE_CLIENT_ID, process.env.APPLE_SERVICE_ID].filter(Boolean),
         ignoreExpiration: process.env.NODE_ENV === 'development',
       });
       appleId = verification.sub;

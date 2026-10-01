@@ -178,7 +178,9 @@ const createAdvertisement = async (req, res) => {
       dim_length,
       dim_width,
       dim_height,
-      dim_unit
+      dim_unit,
+      listing_type,
+      donation_percent
     } = req.body;
 
     // Validate required fields
@@ -279,12 +281,16 @@ const createAdvertisement = async (req, res) => {
     // Note: We skip storing singular location_id in advertisements table or store the first one as primary/fallback
     const primaryLocationId = targetLocationIds[0];
 
+    const parsedDonation = parseFloat(donation_percent) || 0;
+    const isCharity = parsedDonation > 0 ? 1 : 0;
+
     const [result] = await promisePool.query(
       `INSERT INTO advertisements
        (user_id, title, description, images, category_id, subcategory_id, location_id,
         price, display_duration_days, activity_id, condition_id, quality, age_id, gender_id,
-        size_id, color_id, dim_length, dim_width, dim_height, dim_unit, status, start_date, end_date)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        size_id, color_id, dim_length, dim_width, dim_height, dim_unit, status, start_date, end_date, listing_type,
+        donation_percent, is_charity_listing)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         userId,
         title,
@@ -306,11 +312,18 @@ const createAdvertisement = async (req, res) => {
         dim_width || null,
         dim_height || null,
         dim_unit || 'cm',
-        'published', new Date(), endDate
+        'published', new Date(), endDate,
+        listing_type || (parseInt(activity_id) === 4 ? 'service' : 'product'),
+        parsedDonation,
+        isCharity
       ]
     );
 
     const adId = result.insertId;
+
+    if (isCharity) {
+      await promisePool.query('UPDATE users SET is_donator = 1 WHERE id = ?', [userId]);
+    }
 
     // Insert location mappings
     const locationValues = targetLocationIds.map(locId => [adId, locId]);
@@ -468,7 +481,9 @@ const updateAdvertisement = async (req, res) => {
       dim_length,
       dim_width,
       dim_height,
-      dim_unit
+      dim_unit,
+      listing_type,
+      donation_percent
     } = req.body;
 
     // Check if advertisement exists and belongs to user
@@ -647,6 +662,16 @@ const updateAdvertisement = async (req, res) => {
       updates.push('dim_unit = ?');
       params.push(dim_unit);
     }
+    if (donation_percent !== undefined) {
+      const parsedDonation = parseFloat(donation_percent) || 0;
+      updates.push('donation_percent = ?');
+      params.push(parsedDonation);
+      updates.push('is_charity_listing = ?');
+      params.push(parsedDonation > 0 ? 1 : 0);
+      if (parsedDonation > 0) {
+        await promisePool.query('UPDATE users SET is_donator = 1 WHERE id = ?', [userId]);
+      }
+    }
 
     // Allow status changes between draft and published
     if (req.body.status) {
@@ -740,7 +765,7 @@ const updateAdvertisement = async (req, res) => {
 const getUserAdvertisements = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { status, page = 1, limit = 20 } = req.query;
+    const { status, listing_type, page = 1, limit = 20 } = req.query;
 
     let whereClause = 'WHERE a.user_id = ?';
     let params = [userId];
@@ -748,6 +773,12 @@ const getUserAdvertisements = async (req, res) => {
     if (status) {
       whereClause += ' AND a.status = ?';
       params.push(status);
+    }
+
+    if (listing_type === 'service') {
+      whereClause += ' AND (a.listing_type = "service" OR a.category_id = 6 OR a.activity_id = 4)';
+    } else if (listing_type === 'product') {
+      whereClause += ' AND (a.listing_type = "product" OR a.listing_type IS NULL) AND a.category_id != 6 AND a.activity_id != 4';
     }
 
     const offset = (page - 1) * limit;
@@ -980,6 +1011,54 @@ const deleteAdvertisement = async (req, res) => {
 };
 
 
+const expandSizeIds = async (sizeIds) => {
+  if (!sizeIds || sizeIds.length === 0) return [];
+  try {
+    const [selectedSizes] = await promisePool.query(
+      'SELECT id, uk_size, us_size, euro_size, size_category, name FROM ad_sizes WHERE id IN (?)',
+      [sizeIds]
+    );
+
+    const allMatchedIds = new Set(sizeIds.map(id => parseInt(id)));
+
+    for (const size of selectedSizes) {
+      let categoryKey = null;
+      if (size.size_category === 'clothing') {
+        categoryKey = 'dresses';
+      } else if (size.size_category === 'shoes') {
+        categoryKey = 'shoes';
+      }
+
+      if (categoryKey) {
+        const [mappings] = await promisePool.query(
+          `SELECT uk_size, us_size, eu_size FROM clothing_size_mappings
+           WHERE category = ? AND (uk_size = ? OR us_size = ? OR eu_size = ?)`,
+          [categoryKey, size.uk_size, size.us_size, size.euro_size]
+        );
+
+        if (mappings.length > 0) {
+          const map = mappings[0];
+          const [equivalentSizes] = await promisePool.query(
+            `SELECT id FROM ad_sizes
+             WHERE size_category = ? AND (uk_size = ? OR us_size = ? OR euro_size = ?)`,
+            [size.size_category, map.uk_size, map.us_size, map.eu_size]
+          );
+          
+          for (const eqSize of equivalentSizes) {
+            allMatchedIds.add(eqSize.id);
+          }
+        }
+      }
+    }
+
+    return Array.from(allMatchedIds);
+  } catch (err) {
+    console.error('Error expanding size IDs:', err);
+    return sizeIds;
+  }
+};
+
+
 /**
  * Browse/search advertisements (authenticated, requires subscription)
  * GET /api/v1/mobile-app/advertisements/browse
@@ -1009,6 +1088,7 @@ const browseAdvertisements = async (req, res) => {
       limit = 100,
       promoted_only,
       badge_level_filter,
+      listing_type,
     } = req.query;
 
     const isPromotedOnly = promoted_only === 'true' || promoted_only === true;
@@ -1077,6 +1157,15 @@ const browseAdvertisements = async (req, res) => {
       whereParams.push(user_id);
     }
 
+    // Filter by listing_type
+    if (listing_type) {
+      if (listing_type === 'service') {
+        whereClause += ' AND (a.listing_type = "service" OR a.category_id = 6 OR a.activity_id = 4)';
+      } else {
+        whereClause += ' AND (a.listing_type = "product" AND a.category_id != 6 AND a.activity_id != 4)';
+      }
+    }
+
     // Helper function to build IN clauses for multi-select
     const buildInClause = (column, value) => {
       if (!value) return null;
@@ -1139,8 +1228,17 @@ const browseAdvertisements = async (req, res) => {
       whereParams.push(ageQuery.params[0]);
     }
 
-    // Size filter
-    const sizeQuery = buildInClause('a.size_id', size_id);
+    // Size filter with cross-system conversions
+    let finalSizeIds = size_id;
+    if (size_id) {
+      const values = Array.isArray(size_id) ? size_id : size_id.split(',').filter(v => v.trim());
+      if (values.length > 0) {
+        const expanded = await expandSizeIds(values);
+        finalSizeIds = expanded;
+      }
+    }
+
+    const sizeQuery = buildInClause('a.size_id', finalSizeIds);
     if (sizeQuery) {
       whereClause += sizeQuery.clause;
       whereParams.push(sizeQuery.params[0]);
@@ -1552,11 +1650,15 @@ async function fetchActiveShowcases(filters = {}) {
     for (const group of showcaseGroups) {
       const productsQuery = `
         SELECT 
-          a.id, a.title, a.price, a.images, a.user_id,
+          a.id, a.title, a.price, a.images, a.user_id, a.activity_id, a.category_id,
+          COALESCE(ul.latitude, (SELECT latitude FROM user_locations WHERE user_id = a.user_id LIMIT 1)) as latitude,
+          COALESCE(ul.longitude, (SELECT longitude FROM user_locations WHERE user_id = a.user_id LIMIT 1)) as longitude,
           a.created_at, a.views_count,
           pb.showcase_group_id
         FROM product_badges pb
         JOIN advertisements a ON pb.advertisement_id = a.id
+        LEFT JOIN advertisement_locations al ON a.id = al.advertisement_id
+        LEFT JOIN user_locations ul ON al.location_id = ul.id
         WHERE pb.showcase_group_id = ?
           AND pb.is_active = TRUE
           AND a.status = 'published'
@@ -1576,6 +1678,7 @@ async function fetchActiveShowcases(filters = {}) {
           product_count: products.length,
           products: products.map(p => ({
             ...p,
+            eventType: 'showcase',
             images: p.images ? JSON.parse(p.images) : []
           }))
         });
@@ -1662,10 +1765,16 @@ async function fetchActiveHomeMarkets(filters = {}) {
         a.id as advertisement_id,
         a.title,
         a.price,
-        a.images
+        a.images,
+        a.activity_id,
+        a.category_id,
+        COALESCE(ul.latitude, (SELECT latitude FROM user_locations WHERE user_id = a.user_id LIMIT 1)) as latitude,
+        COALESCE(ul.longitude, (SELECT longitude FROM user_locations WHERE user_id = a.user_id LIMIT 1)) as longitude
       FROM product_badges pb
       JOIN advertisements a ON pb.advertisement_id = a.id
       JOIN users u ON a.user_id = u.id
+      LEFT JOIN advertisement_locations al ON a.id = al.advertisement_id
+      LEFT JOIN user_locations ul ON al.location_id = ul.id
       WHERE pb.badge_type = 'visibility'
         AND pb.badge_level IN ('homemarket-gold-7-days', 'homemarket-orange-7-days', 'homemarket-green-7-days')
         AND pb.is_active = TRUE
@@ -1700,6 +1809,11 @@ async function fetchActiveHomeMarkets(filters = {}) {
         title: hm.title,
         price: hm.price,
         seller_name: hm.seller_name,
+        latitude: hm.latitude,
+        longitude: hm.longitude,
+        activity_id: hm.activity_id,
+        category_id: hm.category_id,
+        eventType: 'homemarket',
         images: hm.images ? JSON.parse(hm.images) : []
       });
     });
@@ -1994,6 +2108,7 @@ const getAdvertisementPublicView = async (req, res) => {
              sz.name as size_name, sz.us_size, sz.uk_size, sz.euro_size, sz.intl_size, sz.fr_size, sz.it_size, sz.jp_size, sz.size_category, col.name as color_name, col.hex_code,
              u.id as seller_id, u.full_name as seller_name, u.avatar as seller_avatar,
              u.created_at as seller_member_since, u.username,
+             u.is_donator as seller_is_donator, u.show_donator_status as seller_show_donator_status,
              sp.name as seller_plan_name, sp.slug as seller_plan_slug, 
              sp.plan_type as seller_plan_type, sp.color_hex as seller_plan_color
        FROM advertisements a
@@ -2420,7 +2535,18 @@ const getSearchSuggestions = async (req, res) => {
     let suggestions = [];
 
     if (query.length === 0) {
-      // No query — return trending products with images
+      // Get popular search terms from search_logs
+      const [popularLogs] = await promisePool.query(
+        `SELECT query AS text, 'popular' AS type
+         FROM search_logs
+         WHERE searched_at > DATE_SUB(NOW(), INTERVAL 30 DAY)
+           AND query IS NOT NULL AND query != ''
+         GROUP BY query
+         ORDER BY COUNT(*) DESC
+         LIMIT 5`
+      );
+
+      // Fetch trending products with images as fallback/additional suggestions
       const [trending] = await promisePool.query(
         `SELECT id, title AS text, price, 'GBP' AS currency,
                 JSON_UNQUOTE(JSON_EXTRACT(images, '$[0]')) AS image,
@@ -2431,8 +2557,19 @@ const getSearchSuggestions = async (req, res) => {
          ORDER BY views_count DESC, created_at DESC
          LIMIT 8`
       );
-      suggestions = trending;
+
+      suggestions = [...popularLogs, ...trending];
     } else {
+      // Log search query asynchronously
+      try {
+        await promisePool.query(
+          'INSERT INTO search_logs (query, user_id) VALUES (?, ?)',
+          [query.toLowerCase(), req.user?.id || null]
+        );
+      } catch (logErr) {
+        console.error('Error logging search query:', logErr);
+      }
+
       // Category name matches
       const [categories] = await promisePool.query(
         `SELECT name AS text, 'category' AS type, id AS category_id

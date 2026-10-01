@@ -8,14 +8,21 @@ Process manager: PM2, app name `roundbuy-backend`
 
 ## One-time setup (done once per server)
 
-1. **SSH key auth** — a dedicated deploy key is generated locally at
-   `~/.ssh/roundbuy_deploy_ed25519`. Its public key was added to
-   `roundbuy-api`'s `~/.ssh/authorized_keys` on the server so deploys never
-   need a password.
+Run `./bootstrap-production.sh` from `backend/`, in your own terminal (it
+needs interactive password prompts). It uploads `.env`, `uploads/`, and a
+full database dump, ensures PM2 is installed, then calls `./deploy.sh` to
+sync the code and start the app. See the script for the exact steps.
 
-2. **CloudPanel Node.js site settings** (set once in the CloudPanel UI):
-   - App port: `5001` (must match `PORT` in `.env` — see below)
-   - Node.js version: 20.x (matches local dev)
+Auth is plain SSH password login for the `roundbuy-api` user — no git, no
+GitHub token, no SSH key required on the server side.
+
+1. **CloudPanel Node.js site settings** (set once in the CloudPanel UI):
+   - App port: `3000` (CloudPanel's assigned port for this site - `.env`'s
+     `PORT` is set to match. Node's `dotenv` doesn't override an
+     already-set `PORT` env var, so whatever CloudPanel injects wins
+     regardless of `.env` - keep them in sync)
+   - Node.js version: 24.x (CloudPanel provisioned this via NVM; local dev
+     uses 20.x, but no known incompatibilities so far)
    - Startup file: not used directly — the app is run and supervised by
      **PM2** instead of CloudPanel's built-in Node process manager, so PM2's
      restart/`pm2 save`/reboot-persistence is what keeps it alive.
@@ -30,7 +37,7 @@ Process manager: PM2, app name `roundbuy-backend`
 
    ```nginx
    location /backend/ {
-       proxy_pass http://127.0.0.1:5001/;
+       proxy_pass http://127.0.0.1:3000/;
        proxy_http_version 1.1;
        proxy_set_header Upgrade $http_upgrade;
        proxy_set_header Connection "upgrade";
@@ -72,22 +79,21 @@ Process manager: PM2, app name `roundbuy-backend`
 
 ## Ongoing deploys
 
-From your machine, in `backend/`:
+No GitHub/git involved — `deploy.sh` ships straight from your local disk via
+`rsync` over SSH. From your machine, in `backend/`:
 
 ```bash
 ./deploy.sh
 ```
 
-This will refuse to run if you have uncommitted changes, push your current
-branch to GitHub, then SSH to the server to pull, `npm install`, run any new
-pending migrations, and restart PM2 — then does a health check against
-`https://api.roundbuy.com/health`.
+This `rsync`s your local `backend/` source to the server (excluding
+`node_modules/`, `.env`, `uploads/`, `.deploy-tmp/`, `.git/`), then SSHes in
+to `npm install`, run any new pending migrations, and restart PM2 — then
+does a health check against `https://api.roundbuy.com/health`. Whatever is
+on disk locally is exactly what ships, committed or not.
 
-Currently deploys whatever branch you're on (`git rev-parse --abbrev-ref
-HEAD`), which today is `feat/slc-mobile-app`. Once you settle on `main` as
-the production branch, either merge into `main` and hardcode `BRANCH="main"`
-in `deploy.sh`, or keep working this way if you intend to ship straight from
-the feature branch for now.
+Run this directly in your own terminal (not through an automated tool) so
+the SSH/rsync password prompts actually reach you.
 
 ## Known pre-existing issues (not introduced by this setup, carried over from local)
 

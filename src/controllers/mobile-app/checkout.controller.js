@@ -5,27 +5,37 @@ exports.getCheckoutConfig = async (req, res) => {
         const userId = req.user.id;
 
         // 1. Get Wallet Balance
-        const [walletResult] = await promisePool.query(
-            `SELECT COALESCE(SUM(CASE WHEN transaction_type = 'credit' THEN amount ELSE 0 END) - 
-                     SUM(CASE WHEN transaction_type = 'debit' THEN amount ELSE 0 END), 0) as balance 
-             FROM wallet_transactions 
-             WHERE user_id = ? AND status = 'completed'`,
-            [userId]
-        );
-        const walletBalance = walletResult[0].balance || 0;
+        let walletBalance = 0;
+        try {
+            const [walletResult] = await promisePool.query(
+                `SELECT COALESCE(SUM(CASE WHEN transaction_type = 'credit' THEN amount ELSE 0 END) - 
+                         SUM(CASE WHEN transaction_type = 'debit' THEN amount ELSE 0 END), 0) as balance 
+                 FROM wallet_transactions 
+                 WHERE user_id = ? AND status = 'completed'`,
+                [userId]
+            );
+            walletBalance = walletResult[0]?.balance || 0;
+        } catch (e) {
+            console.warn('Wallet balance query warning:', e.message);
+        }
 
         // 2. Get User Contact / Address Details
-        const [userResult] = await promisePool.query(
-            "SELECT full_name, phone, billing_address FROM users WHERE id = ?",
-            [userId]
-        );
-        const user = userResult[0];
+        let user = {};
+        try {
+            const [userResult] = await promisePool.query(
+                "SELECT full_name, phone, billing_address FROM users WHERE id = ?",
+                [userId]
+            );
+            user = userResult[0] || {};
+        } catch (e) {
+            console.warn('User details query warning:', e.message);
+        }
 
         // Ensure we gracefully handle missing address
         let savedAddress = null;
         if (user.billing_address) {
             try {
-                savedAddress = JSON.parse(user.billing_address);
+                savedAddress = typeof user.billing_address === 'string' ? JSON.parse(user.billing_address) : user.billing_address;
             } catch (e) {
                 savedAddress = null;
             }
@@ -34,30 +44,42 @@ exports.getCheckoutConfig = async (req, res) => {
         // Always pass down name and phone
         savedAddress = {
             ...savedAddress,
-            fullName: user.full_name,
+            fullName: user.full_name || '',
             phone: user.phone || ''
         };
 
         // 3. Get Saved Payment Methods
-        const [paymentMethods] = await promisePool.query(
-            "SELECT * FROM saved_payment_methods WHERE user_id = ? AND is_active = TRUE",
-            [userId]
-        );
+        let paymentMethods = [];
+        try {
+            const [methodsResult] = await promisePool.query(
+                "SELECT * FROM saved_payment_methods WHERE user_id = ? AND is_active = TRUE",
+                [userId]
+            );
+            paymentMethods = methodsResult || [];
+        } catch (e) {
+            console.warn('Saved payment methods query warning:', e.message);
+        }
 
         // 4. Get System Fees Setup (Fallback to defaults if not found)
-        const [settings] = await promisePool.query(
-            "SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('buyer_fee', 'item_value_fee_percent', 'stripe_publishable_key')"
-        );
-
         let buyerFeeStr = '1.00';
         let itemValueFeeStr = '2.7';
         let stripePublishableKey = null;
 
-        settings.forEach(s => {
-            if (s.setting_key === 'buyer_fee') buyerFeeStr = s.setting_value;
-            if (s.setting_key === 'item_value_fee_percent') itemValueFeeStr = s.setting_value;
-            if (s.setting_key === 'stripe_publishable_key') stripePublishableKey = s.setting_value;
-        });
+        try {
+            const [settings] = await promisePool.query(
+                "SELECT setting_key, setting_value FROM settings WHERE setting_key IN ('buyer_fee', 'item_value_fee_percent', 'stripe_publishable_key')"
+            );
+
+            if (Array.isArray(settings)) {
+                settings.forEach(s => {
+                    if (s.setting_key === 'buyer_fee') buyerFeeStr = s.setting_value;
+                    if (s.setting_key === 'item_value_fee_percent') itemValueFeeStr = s.setting_value;
+                    if (s.setting_key === 'stripe_publishable_key') stripePublishableKey = s.setting_value;
+                });
+            }
+        } catch (e) {
+            console.warn('Settings query warning:', e.message);
+        }
 
         // Fallback to a dummy key if completely missing so the frontend doesn't break
         if (!stripePublishableKey) {
@@ -149,11 +171,13 @@ exports.processOrder = async (req, res) => {
         await connection.beginTransaction();
 
         const userId = req.user.id;
-        const { advertisementId, conversationId, deliveryOption, paymentMethod, amount, paymentId, addressDetails } = req.body;
+        const { advertisementId, conversationId, deliveryOption, paymentMethod, amount, paymentId, addressDetails, easyReturnEnabled, donationPercent, donationAmount } = req.body;
 
         let sellerId;
         let adTitle;
         let finalAdvertisementId = advertisementId;
+        let effectiveDonationPercent = parseFloat(donationPercent) || 0;
+        let effectiveDonationAmount = parseFloat(donationAmount) || 0;
 
         if (conversationId && typeof conversationId === 'string' && conversationId.startsWith('event-')) {
             const eventItemId = conversationId.split('-')[1];
@@ -182,10 +206,14 @@ exports.processOrder = async (req, res) => {
             }
         } else {
             // Fetch Advertisement to link seller
-            const [ad] = await connection.query("SELECT user_id, title FROM advertisements WHERE id = ?", [advertisementId]);
+            const [ad] = await connection.query("SELECT user_id, title, donation_percent FROM advertisements WHERE id = ?", [advertisementId]);
             if (!ad.length) throw new Error('Advertisement not found');
             sellerId = ad[0].user_id;
             adTitle = ad[0].title;
+            if (ad[0].donation_percent && !effectiveDonationPercent) {
+                effectiveDonationPercent = parseFloat(ad[0].donation_percent) || 0;
+                effectiveDonationAmount = (amount * effectiveDonationPercent) / 100;
+            }
         }
 
         // 1. Handle Wallet Payment
@@ -222,16 +250,20 @@ exports.processOrder = async (req, res) => {
             );
         }
 
-        // 2. Create the Order Record (saving deliveryOption in notes or explicitly if column exists) 
-        // We'll safely pack delivery details into shipping_address/notes since schema might lack 'delivery_option'
+        // 2. Create the Order Record (saving deliveryOption, easyReturn in notes or explicitly)
         const addressJson = addressDetails ? JSON.stringify(addressDetails) : null;
-        const notes = JSON.stringify({ deliveryOption: deliveryOption });
+        const notes = JSON.stringify({ 
+            deliveryOption: deliveryOption,
+            easyReturnEnabled: !!easyReturnEnabled,
+            donationPercent: effectiveDonationPercent,
+            donationAmount: effectiveDonationAmount
+        });
 
         const [orderResult] = await connection.query(
             `INSERT INTO orders 
-             (buyer_id, seller_id, advertisement_id, amount, status, payment_status, payment_method, payment_id, shipping_address, notes) 
-             VALUES (?, ?, ?, ?, 'confirmed', 'completed', ?, ?, ?, ?)`,
-            [userId, sellerId, finalAdvertisementId, amount, paymentMethod, paymentId || null, addressJson, notes]
+             (buyer_id, seller_id, advertisement_id, amount, status, payment_status, payment_method, payment_id, shipping_address, notes, easy_return_enabled, donation_percent, donation_amount) 
+             VALUES (?, ?, ?, ?, 'confirmed', 'completed', ?, ?, ?, ?, ?, ?, ?)`,
+            [userId, sellerId, finalAdvertisementId, amount, paymentMethod, paymentId || null, addressJson, notes, easyReturnEnabled ? 1 : 0, effectiveDonationPercent, effectiveDonationAmount]
         );
         const orderId = orderResult.insertId;
 
@@ -241,8 +273,16 @@ exports.processOrder = async (req, res) => {
             [orderId, finalAdvertisementId, amount]
         );
 
-        // 4. If part of a conversation flow, update that conversation step 
-        // (This would hypothetically mark step 3 complete depending on the exact schema)
+        // 4. Record Charity Donation if active
+        if (effectiveDonationAmount > 0) {
+            await connection.query(
+                `INSERT INTO charity_donations
+                 (order_id, advertisement_id, seller_id, buyer_id, total_item_price, donation_percent, donation_amount, status)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')`,
+                [orderId, finalAdvertisementId, sellerId, userId, amount, effectiveDonationPercent, effectiveDonationAmount]
+            );
+            await connection.query('UPDATE users SET is_donator = 1 WHERE id = ?', [sellerId]);
+        }
 
         await connection.commit();
 

@@ -7,7 +7,8 @@ const { checkTextModeration } = require('../../services/moderation.service');
 const getConversations = async (req, res) => {
   try {
     const userId = req.user.id;
-    const { page = 1, limit = 20 } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
     const offset = (page - 1) * limit;
 
     // Get conversations where user is buyer or seller.
@@ -80,8 +81,8 @@ const getConversations = async (req, res) => {
       success: true,
       conversations,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
         totalPages
       }
@@ -101,7 +102,8 @@ const getConversationMessages = async (req, res) => {
   try {
     const userId = req.user.id;
     const { conversationId } = req.params;
-    const { page = 1, limit = 50 } = req.query;
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 50));
     const offset = (page - 1) * limit;
 
     // Verify user has access to this conversation

@@ -7,80 +7,85 @@
 # Path:    /home/roundbuy-api/htdocs/api.roundbuy.com
 # User:    roundbuy-api
 #
-# Usage (run from backend/, on your local machine):
+# Usage (run from backend/, in your own terminal so password
+# prompts work):
 #   ./deploy.sh
 #
 # What it does:
-#   1. Refuses to run if you have uncommitted local changes
-#   2. Pushes your current branch to GitHub
-#   3. SSHes into the server and:
-#      - pulls the same branch
-#      - installs dependencies
-#      - runs any pending SQL migrations (backend/migrations/*.sql)
-#      - restarts the app with PM2
+#   1. rsyncs your local backend/ source straight to the server
+#      (no git/GitHub involved - whatever's on disk locally ships,
+#      excluding node_modules, .env, uploads/, and this script's
+#      own staging files)
+#   2. npm install on the server
+#   3. runs any pending SQL migrations (backend/migrations/*.sql)
+#   4. restarts the app with PM2
+#   5. health-checks https://api.roundbuy.com/health
 #
-# Requires: SSH key auth already set up for roundbuy-api@72.61.147.51
-# (see backend/PRODUCTION_SETUP.md for the one-time bootstrap steps)
+# First time only: run ./bootstrap-production.sh instead, which
+# sets up .env, uploads/, the database, and PM2, then calls this.
 # =============================================================
 
-set -e
-set -o pipefail
+set -euo pipefail
 
-# ─── Config ───────────────────────────────────────────────────
 REMOTE_HOST="72.61.147.51"
 REMOTE_USER="roundbuy-api"
 REMOTE_PATH="/home/roundbuy-api/htdocs/api.roundbuy.com"
-SSH_KEY="$HOME/.ssh/roundbuy_deploy_ed25519"
 PM2_APP_NAME="roundbuy-backend"
 HEALTH_URL="https://api.roundbuy.com/health"
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
-SSH_OPTS=(-i "$SSH_KEY" -o ConnectTimeout=15)
-
 echo -e "${BLUE}=============================================${NC}"
 echo -e "${BLUE}  RoundBuy Backend - Live Deployment        ${NC}"
-echo -e "${BLUE}  Branch: ${BRANCH}${NC}"
 echo -e "${BLUE}=============================================${NC}"
 echo ""
 
-# ─── Step 1: Refuse to deploy dirty working tree ────────────
-echo -e "${YELLOW}[1/5] Checking working tree is clean...${NC}"
-if [ -n "$(git status --porcelain)" ]; then
-  echo -e "${RED}✗ You have uncommitted changes. Commit or stash them first:${NC}"
-  git status --short
-  exit 1
-fi
-echo -e "${GREEN}✓ Working tree clean${NC}"
+# ─── Step 1: Sync source code ────────────────────────────────
+echo -e "${YELLOW}[1/4] Syncing source code to server...${NC}"
+rsync -az --delete \
+  --exclude 'node_modules/' \
+  --exclude '.env' \
+  --exclude '.env.production' \
+  --exclude '.deploy-tmp/' \
+  --exclude 'uploads/' \
+  --exclude '.git/' \
+  --exclude 'tests/' \
+  --exclude '*.log' \
+  --exclude '.DS_Store' \
+  ./ "${REMOTE_USER}@${REMOTE_HOST}:${REMOTE_PATH}/"
+echo -e "${GREEN}✓ Code synced${NC}"
 
-# ─── Step 2: Push current branch to GitHub ──────────────────
-echo -e "${YELLOW}[2/5] Pushing '${BRANCH}' to GitHub...${NC}"
-git push origin "$BRANCH"
-echo -e "${GREEN}✓ Pushed${NC}"
-
-# ─── Step 3-5: Remote deploy over SSH ────────────────────────
-echo -e "${YELLOW}[3/5] Deploying on server (${REMOTE_HOST})...${NC}"
-ssh "${SSH_OPTS[@]}" "${REMOTE_USER}@${REMOTE_HOST}" bash -s -- "$BRANCH" "$REMOTE_PATH" "$PM2_APP_NAME" <<'REMOTE_SCRIPT'
+# ─── Step 2-4: Install, migrate, restart (remote) ────────────
+echo -e "${YELLOW}[2/4] Installing dependencies, migrating, restarting...${NC}"
+ssh "${REMOTE_USER}@${REMOTE_HOST}" bash -s -- "$REMOTE_PATH" "$PM2_APP_NAME" <<'REMOTE_SCRIPT'
 set -e
-BRANCH="$1"
-REMOTE_PATH="$2"
-PM2_APP_NAME="$3"
+REMOTE_PATH="$1"
+PM2_APP_NAME="$2"
 
 cd "$REMOTE_PATH"
 
-echo "  → Fetching origin/$BRANCH..."
-git fetch origin "$BRANCH"
-git checkout "$BRANCH"
-git reset --hard "origin/$BRANCH"
+# npm/node aren't on PATH in this non-interactive shell (NVM's rc-file
+# hook isn't wired up here) - load them directly instead.
+export NVM_DIR="$HOME/.nvm"
+if [ -s "$NVM_DIR/nvm.sh" ]; then
+  . "$NVM_DIR/nvm.sh"
+elif [ -d "$NVM_DIR/versions/node" ]; then
+  NODE_BIN_DIR=$(ls -d "$NVM_DIR"/versions/node/*/bin 2>/dev/null | tail -1)
+  export PATH="$NODE_BIN_DIR:$PATH"
+fi
+echo "  → using node $(command -v node) ($(node -v))"
 
-echo "  → Installing dependencies..."
+echo "  → npm install..."
 npm install --omit=dev
+
+echo "  → Ensuring PM2 is available..."
+if ! command -v pm2 >/dev/null 2>&1; then
+  npm install -g pm2
+fi
 
 echo "  → Running pending migrations..."
 if [ -f "database/run-pending-migrations.js" ]; then
@@ -101,7 +106,7 @@ REMOTE_SCRIPT
 echo -e "${GREEN}✓ Server updated and restarted${NC}"
 
 # ─── Health check ─────────────────────────────────────────────
-echo -e "${YELLOW}[4/5] Waiting for the app to come back up...${NC}"
+echo -e "${YELLOW}[3/4] Waiting for the app to come back up...${NC}"
 sleep 3
 HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" || echo "000")
 if [ "$HTTP_CODE" = "200" ]; then
@@ -110,13 +115,12 @@ else
   echo -e "${RED}✗ $HEALTH_URL responded with HTTP $HTTP_CODE - check 'pm2 logs $PM2_APP_NAME' on the server${NC}"
 fi
 
-echo -e "${YELLOW}[5/5] Done.${NC}"
+echo -e "${YELLOW}[4/4] Done.${NC}"
 echo ""
 echo -e "${GREEN}=============================================${NC}"
 echo -e "${GREEN}  ✅ Backend Deployed Successfully!          ${NC}"
 echo -e "${GREEN}=============================================${NC}"
-echo -e "  ${BLUE}Branch:${NC} $BRANCH"
-echo -e "  ${BLUE}Path:${NC}   $REMOTE_PATH"
-echo -e "  ${BLUE}PM2:${NC}    $PM2_APP_NAME"
-echo -e "  ${BLUE}Time:${NC}   $(date '+%Y-%m-%d %H:%M:%S')"
+echo -e "  ${BLUE}Path:${NC} $REMOTE_PATH"
+echo -e "  ${BLUE}PM2:${NC}  $PM2_APP_NAME"
+echo -e "  ${BLUE}Time:${NC} $(date '+%Y-%m-%d %H:%M:%S')"
 echo ""

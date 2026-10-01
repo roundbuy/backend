@@ -46,11 +46,23 @@ async function markApplied(filename) {
 async function runSqlFile(filePath, filename) {
     const sql = fs.readFileSync(filePath, 'utf8');
 
-    // Split on semicolons, skip blank lines and comments
-    const statements = sql
+    // Strip `--` line comments before splitting on semicolons. A semicolon
+    // in a comment's prose (e.g. "...instead; this migration fixes...")
+    // would otherwise be mistaken for a statement terminator, splitting one
+    // comment into two fragments and corrupting whatever statement follows.
+    const withoutLineComments = sql
+        .split('\n')
+        .map(line => {
+            const idx = line.indexOf('--');
+            return idx === -1 ? line : line.slice(0, idx);
+        })
+        .join('\n');
+
+    // Split on semicolons, skip blank lines and leftover block comments
+    const statements = withoutLineComments
         .split(';')
         .map(s => s.trim())
-        .filter(s => s.length > 0 && !s.startsWith('--') && !s.startsWith('/*'));
+        .filter(s => s.length > 0 && !s.startsWith('/*'));
 
     console.log(`\n▶  ${filename}  (${statements.length} statement${statements.length !== 1 ? 's' : ''})`);
 
